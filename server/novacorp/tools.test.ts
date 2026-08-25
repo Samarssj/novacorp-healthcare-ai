@@ -18,7 +18,7 @@ describe("NovaCorp grounded multi-patient contract", () => {
   });
 
   it("exposes confirmation-gated booking and cancellation in OpenAPI-derived tools", () => {
-    expect(approvedModelTools.map(tool => tool.function.name)).toEqual(expect.arrayContaining(["book_appointment", "cancel_appointment"]));
+    expect(approvedModelTools.map(tool => tool.function.name)).toEqual(expect.arrayContaining(["verify_member", "book_appointment", "cancel_appointment"]));
     expect(novacorpOpenApi.paths).toHaveProperty("/appointments/book");
     expect(novacorpOpenApi.paths).toHaveProperty("/appointments/cancel");
   });

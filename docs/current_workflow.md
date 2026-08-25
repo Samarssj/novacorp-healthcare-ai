@@ -2,7 +2,7 @@
 
 ## Verified patient access
 
-NovaCorp Health opens with a member-access screen rather than a preselected patient profile. The server validates a normalized member ID and mobile number against the persisted patient record, then creates a short-lived signed session cookie. Every care operation resolves its patient identity from this session; no patient identifier is trusted from the browser or model.
+NovaCorp Health opens with a greeting from Nova rather than a preselected patient profile or standalone credential form. Nova asks for the member ID first, then asks for the associated mobile number. The backend conversational controller invokes the typed `verify_member` operation against the persisted patient record and creates a short-lived signed session cookie only after that tool returns a verified patient. Every care operation resolves its patient identity from this session; no patient identifier is trusted from the browser or model.
 
 > Gemini is a reasoning and response-composition component. Authentication, authorization, patient selection, database access, and appointment execution are server-owned responsibilities.
 

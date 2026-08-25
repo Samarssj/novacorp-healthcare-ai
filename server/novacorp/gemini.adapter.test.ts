@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateGeminiStructured } from "./gemini";
 
 describe("external Gemini structured adapter", () => {
-  it.skipIf(!process.env.GEMINI_API_KEY)("returns schema-conformant JSON from the server-side Gemini API", async () => {
+  it.skipIf(process.env.RUN_EXTERNAL_LLM_TESTS !== "true" || !process.env.GEMINI_API_KEY)("returns schema-conformant JSON from the server-side Gemini API", async () => {
     const result = await generateGeminiStructured({
       schemaName: "adapter_smoke",
       schema: {

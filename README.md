@@ -1,38 +1,153 @@
 # NovaCorp Health Care Workspace
 
-NovaCorp Health is a responsive, patient-scoped care workspace for member benefit questions, policy evidence, appointment coordination, and validated Gemini assistance. It combines a protected member access flow, a persistent multi-patient database, typed server operations, specialist-agent routing, and confirmation-gated appointment changes.
+> **Private member access. Evidence-led coordination. Human-centred care.**
 
-## Member workflow
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![tRPC](https://img.shields.io/badge/tRPC-11-398CCB?logo=trpc&logoColor=white)](https://trpc.io/)
+[![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Drizzle](https://img.shields.io/badge/Drizzle-ORM-C5F74F?logo=drizzle&logoColor=1a1a1a)](https://orm.drizzle.team/)
+[![Gemini](https://img.shields.io/badge/Google_Gemini-3.6_Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
+[![Render](https://img.shields.io/badge/Render-ready-46E3B7?logo=render&logoColor=white)](https://render.com/)
 
-The member starts on the access screen, enters a member ID and mobile number, and receives a signed, HTTP-only care-session cookie only after the server validates both values. The browser does not select a patient ID; every subsequent workspace, chat, evidence, booking, and cancellation operation resolves the patient only from that verified session.
+NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-led access conversation** with a persistent multi-patient data model, policy-evidence retrieval, confirmation-gated appointments, and guarded Gemini reasoning. The product is designed so that the server—not the model or browser—owns verification, patient identity, data access, and consequential actions.
 
-| Step | Server responsibility | Result |
-|---|---|---|
-| Verify | Normalize member ID and phone number, then compare the stored phone hash. | A 30-minute signed patient session or a generic verification error. |
-| Load workspace | Resolve the session subject and query only that patient’s records. | Profile, medications, allergies, plan, and upcoming appointment. |
-| Route request | Classify the question into the minimum required specialists. | Patient, Insurance, Appointment, and Summary stages. |
-| Retrieve | Execute only typed, allowlisted operations with the verified patient ID injected server-side. | Patient-scoped profile, cited policy evidence, or availability. |
-| Compose | Supply only approved outputs to Gemini, then validate Gemini’s structured reply. | A grounded response or conservative local fallback. |
-| Act | Require an explicit second confirmation for booking or cancellation. | A validated confirmation result only after server-side checks. |
+## Product at a glance
 
-## Specialist-agent design
-
-The coordinator is the policy boundary. Gemini may classify intent and compose a response from server-approved results, but it does not authenticate members, choose a patient, access a database, or execute an appointment action. The coordinator injects the verified patient identity and routes only to the selected specialist responsibilities.
-
-| Specialist | Approved role |
+| Capability | What it delivers |
 |---|---|
-| Patient Agent | Retrieves the verified member’s profile, medications, allergies, plan, and current appointment. |
-| Insurance RAG Agent | Searches approved policy evidence for the verified member’s plan and returns citations. |
-| Appointment Agent | Finds matching availability and carries out confirmation-gated booking or cancellation. |
-| Summary Agent | Uses Gemini to compose from approved outputs; the server enforces citations, no-evidence handling, and action safeguards. |
+| **Conversation-first access** | Nova greets the member, requests a member ID, then asks for the associated mobile number. |
+| **Patient-scoped session** | A signed, HTTP-only session is issued only after the backend verifies both credentials. |
+| **Specialist routing** | Gemini classifies care requests for Patient, Insurance, Appointment, and Summary specialists. |
+| **Grounded coverage support** | Policy answers use retrieved evidence with document, section, page, and relevance details. |
+| **Action safeguards** | Booking and cancellation need a separate, explicit confirmation before server execution. |
+| **Stateless deployment** | Persistent data lives in MySQL-compatible storage; the Node service is ready for Render. |
 
-## Gemini configuration
+---
 
-`server/novacorp/gemini.ts` uses the direct Google Gemini API when `GEMINI_API_KEY` is available, making it compatible with Render and other external hosts. It defaults to `gemini-3.6-flash` and accepts a `GEMINI_MODEL` override. The key is server-only and must never be passed to the client. When a platform model proxy is available locally but an external key is absent, the adapter can use the platform proxy as a fallback.
+## The member journey
 
-## Database and showcase members
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as Member
+    participant N as Nova conversation
+    participant V as verify_member tool
+    participant D as Patient database
+    participant S as Signed session
+    participant C as Care coordinator
 
-The Drizzle schema creates tables for patients, medications, allergies, appointment slots, and patient appointments. Run the seed command once after migrating to create the local showcase members.
+    M->>N: Opens private care conversation
+    N->>M: Greets member and requests member ID
+    M->>N: Shares member ID
+    N->>M: Requests associated mobile number
+    M->>N: Shares mobile number
+    N->>V: Typed OpenAPI verification call
+    V->>D: Validate normalized credentials
+    D-->>V: Verified patient record
+    V-->>S: Create 30-minute signed session
+    S-->>M: Open patient-scoped workspace
+    M->>C: Ask benefits or appointment question
+```
+
+> **Trust boundary:** Nova guides the conversation, but the server validates credentials and creates the session. Gemini never authenticates a member, chooses a patient, or directly executes an appointment action.
+
+---
+
+## System architecture
+
+```mermaid
+flowchart LR
+    member[Member browser]
+    web[React + TypeScript\nEditorial care workspace]
+    trpc[tRPC procedures\nTyped contracts]
+    sse[SSE care stream\nLive agent activity]
+    access[Conversation controller\nCredential collection]
+    session[Signed patient session\nHTTP-only cookie]
+    router[Care coordinator\nIntent + specialist routing]
+    tools[Approved OpenAPI tools\nZod argument validation]
+    patient[Patient specialist]
+    insurance[Insurance RAG specialist]
+    appointment[Appointment specialist]
+    gemini[Gemini 3.6 Flash\nStructured reasoning]
+    db[(MySQL-compatible database\nPatients · plans · slots)]
+    evidence[(Policy evidence index)]
+
+    member --> web
+    web --> trpc
+    web --> sse
+    trpc --> access
+    access --> tools
+    tools --> db
+    access --> session
+    session --> router
+    sse --> router
+    router --> patient
+    router --> insurance
+    router --> appointment
+    router --> gemini
+    patient --> db
+    insurance --> evidence
+    appointment --> db
+    gemini -. approved outputs only .-> router
+```
+
+### Guardrails by design
+
+| Boundary | Enforcement |
+|---|---|
+| **Identity** | The verified patient ID is resolved from the signed server session, never accepted from a model or action payload. |
+| **Tool use** | Operations are allowlisted, described by OpenAPI 3.1, and validated with Zod before execution. |
+| **Evidence** | A response selecting policy evidence must include matching citations; no-evidence requests produce no policy conclusion. |
+| **Appointments** | A displayed slot does not create an appointment. The member must explicitly confirm before the server calls the booking operation. |
+| **LLM output** | Gemini receives approved, patient-scoped outputs only. Structured results are checked before the member sees them. |
+
+---
+
+## Technology stack
+
+| Layer | Technologies | Responsibility |
+|---|---|---|
+| **Experience** | React 19, TypeScript, Tailwind CSS, shadcn/ui | Responsive member conversation and care workspace. |
+| **Application server** | Node.js, Express 4, tRPC 11 | Typed APIs, server-sent activity events, session-bound orchestration. |
+| **Data** | MySQL-compatible database, Drizzle ORM | Multi-patient records, medications, allergies, availability, and appointments. |
+| **AI** | Google Gemini 3.6 Flash, JSON schemas | Specialist intent classification and constrained response composition. |
+| **Contracts** | OpenAPI 3.1, Zod | Documented operations and runtime validation. |
+| **Deployment** | Render Blueprint, health endpoint, environment configuration | One stateless Node service with persistent database backing. |
+
+---
+
+## Conversation and verification contract
+
+Nova uses a deliberate two-step state machine. The sequence is predictable, inspectable, and easier to secure than interpreting a free-form identity statement.
+
+```text
+awaiting_member_id
+        │ member ID captured
+        ▼
+awaiting_phone
+        │ typed verify_member operation succeeds
+        ▼
+verified → signed session issued → workspace opens
+```
+
+The `verify_member` operation is included in the generated OpenAPI contract. It normalizes the member ID and mobile number, compares the server-side phone hash, returns a generic failure when validation does not succeed, and creates no patient session on its own. The conversation controller creates the session only after receiving a verified result.
+
+---
+
+## Quick start
+
+### 1. Install and run
+
+```bash
+pnpm install
+pnpm dev
+```
+
+### 2. Migrate and seed
 
 ```bash
 pnpm drizzle-kit generate
@@ -40,27 +155,54 @@ pnpm drizzle-kit generate
 pnpm seed:demo
 ```
 
+### 3. Validate
+
+```bash
+pnpm test
+pnpm check
+pnpm build
+```
+
+## Showcase member credentials
+
 | Member | Member ID | Mobile number |
 |---|---|---|
 | Avery Carter | `NCG-48219` | `555-010-4821` |
 | Maya Singh | `NCG-91577` | `555-010-9157` |
 | Jordan Brooks | `NCS-76064` | `555-010-7606` |
 
-## Local development
+## Environment configuration
 
-```bash
-pnpm install
-pnpm dev
-pnpm test
-pnpm check
-```
+| Variable | Used for |
+|---|---|
+| `DATABASE_URL` | MySQL-compatible patient-care database connection. |
+| `JWT_SECRET` | Signing short-lived, verified patient sessions. |
+| `GEMINI_API_KEY` | Server-only Gemini API access for external hosting. |
+| `GEMINI_MODEL` | Optional Gemini model override; defaults to `gemini-3.6-flash`. |
 
-The required server environment values are `DATABASE_URL`, `JWT_SECRET`, and `GEMINI_API_KEY`. A `GEMINI_MODEL` override is optional. Do not commit `.env` files or expose any of these values in client-side code.
+Never commit environment values or expose them through client-side code.
 
-## Render deployment
+## Deploy to Render
 
-The repository includes `render.yaml` for a single stateless Node web service. Render should use `pnpm render-build` as the build command, `pnpm start` as the start command, and `/health` as the health-check path. Configure a persistent MySQL-compatible database and the server-only environment variables in Render before deploying. See [the deployment guide](docs/deployment.md) for exact setup details and official Gemini API references.
+The included [`render.yaml`](render.yaml) configures a stateless Node web service using `pnpm render-build`, `pnpm start`, and the `/health` check. Attach a persistent MySQL-compatible database, configure the server-only values above, apply the migration, then run `pnpm seed:demo` for the showcase data.
 
-## OpenAPI and safety checks
+The project uses the Gemini `generateContent` API for its external server-side adapter and follows the application-managed function-calling pattern documented by Google. [1] [2]
 
-The OpenAPI 3.1 contract lives in `server/novacorp/openapi.ts`. Its model tool definitions intentionally omit patient identifiers because the server resolves identity from the signed session. The test suite checks credential normalization, multi-patient verification, workspace isolation, signed-session subjects, specialist routing, citation requirements, no-evidence response safety, confirmation schemas, OpenAPI operation exposure, and the external Gemini credential/structured output path.
+## Project map
+
+| Path | Purpose |
+|---|---|
+| `client/src/pages/Home.tsx` | Conversation-led member verification and patient workspace experience. |
+| `server/novacorp/memberVerification.ts` | Verification conversation state machine and typed `verify_member` operation. |
+| `server/novacorp/coordinator.ts` | Gemini intent routing, specialist orchestration, response validation, and fallback behavior. |
+| `server/novacorp/tools.ts` | Patient-scoped approved operation dispatcher. |
+| `server/novacorp/openapi.ts` | OpenAPI 3.1 contract and compatible model-tool definitions. |
+| `server/novacorp/gemini.ts` | Direct external Gemini adapter with structured-response handling. |
+| `drizzle/schema.ts` | Persistent multi-patient schema. |
+| `docs/deployment.md` | External hosting, database, and Gemini deployment guide. |
+
+## References
+
+[1] [Google Gemini API — generateContent](https://ai.google.dev/api/generate-content)
+
+[2] [Google Gemini API — function calling](https://ai.google.dev/gemini-api/docs/function-calling)

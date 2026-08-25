@@ -7,6 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { getPatientWorkspace, verifyPatientCredentials } from "./novacorp/careData";
 import { runCoordinator } from "./novacorp/coordinator";
+import { continueMemberConversation } from "./novacorp/memberVerification";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
 import { createPatientSession, PATIENT_SESSION_COOKIE, resolvePatientSession } from "./novacorp/session";
 import { executeApprovedTool } from "./novacorp/tools";
@@ -14,6 +15,12 @@ import { executeApprovedTool } from "./novacorp/tools";
 const memberVerificationSchema = z.object({
   memberId: z.string().trim().min(5).max(64),
   phoneNumber: z.string().trim().min(8).max(32),
+}).strict();
+
+const memberConversationSchema = z.object({
+  stage: z.enum(["awaiting_member_id", "awaiting_phone", "verified"]),
+  message: z.string().trim().min(1).max(160),
+  memberId: z.string().trim().min(5).max(64).optional(),
 }).strict();
 
 async function requireVerifiedPatient(cookieHeader: string | undefined) {
@@ -37,6 +44,18 @@ export const appRouter = router({
     }),
   }),
   care: router({
+    beginVerificationConversation: publicProcedure.query(() => ({
+      stage: "awaiting_member_id" as const,
+      reply: "Welcome to NovaCorp Health. I’m Nova, your care assistant. To open your private workspace, please enter your member ID.",
+    })),
+    continueVerificationConversation: publicProcedure.input(memberConversationSchema).mutation(async ({ input, ctx }) => {
+      const result = await continueMemberConversation(input);
+      if (result.stage === "verified" && result.patient) {
+        const token = await createPatientSession(result.patient.id);
+        ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
+      }
+      return result;
+    }),
     verifyMember: publicProcedure.input(memberVerificationSchema).mutation(async ({ input, ctx }) => {
       const patient = await verifyPatientCredentials(input.memberId, input.phoneNumber);
       const token = await createPatientSession(patient.id);

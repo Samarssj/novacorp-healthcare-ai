@@ -24,3 +24,11 @@
 - [x] Replace the current demo-oriented UI language with a professional enterprise care experience and verification entry flow.
 - [x] Add automated tests for multi-patient verification, patient-session isolation, and specialist-agent routing.
 - [x] Add deployment documentation and configuration guidance for a stateless Render-compatible Node service.
+- [x] Replace the member-access form with a greeting-first conversational verification state machine.
+- [x] Add typed OpenAPI-described member-verification tool invocation within the conversational backend flow.
+- [x] Grant the verified patient session only after the AI-led conversation has collected and server-validated both credentials.
+- [x] Add tests for conversational credential collection, backend tool verification, and successful patient-session handoff.
+- [x] Inspect project commit authorship and identify which history can safely be attributed to the user.
+- [x] Update future project commit authorship to the user's verified GitHub identity.
+- [x] Redesign the README with technology badges, a member-verification workflow, and a clear system architecture diagram.
+- [x] Verify the configured Git author identity for all future project commits.

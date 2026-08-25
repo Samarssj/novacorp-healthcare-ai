@@ -59,6 +59,7 @@ export const novacorpOpenApi = {
 
 /** Model-facing declarations intentionally omit patient identity: the server injects it from the signed session. */
 export const approvedModelTools: Tool[] = [
+  { type: "function", function: { name: "verify_member", description: "Verify a member ID and mobile number through the server-owned member-verification operation. This operation creates no session by itself; the conversation controller completes the verified-session handoff.", parameters: { type: "object", properties: { memberId: { type: "string" }, phoneNumber: { type: "string" } }, required: ["memberId", "phoneNumber"], additionalProperties: false } } },
   { type: "function", function: { name: "get_patient_summary", description: "Return the verified member's typed patient profile.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "search_policy_evidence", description: "Search approved policy excerpts for the verified member's plan and return citations. Never infer coverage without returned evidence.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
   { type: "function", function: { name: "search_appointment_availability", description: "Search available appointment slots for the verified member. This operation does not book an appointment.", parameters: { type: "object", properties: { specialty: { type: "string" } }, required: ["specialty"], additionalProperties: false } } },

@@ -1,12 +1,11 @@
 import { AIChatBox, type Message } from "@/components/AIChatBox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
 import type { AgentActivity, AppointmentSlot, BookingConfirmation, CoordinatorResult, PolicyEvidence } from "@shared/novacorp";
 import { ArrowUpRight, Check, ChevronRight, CircleAlert, Clock3, FileText, HeartPulse, Loader2, LockKeyhole, LogOut, MapPin, ShieldCheck, Sparkles, Stethoscope } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const suggestedPrompts = [
   "What is my specialist copay?",
@@ -38,10 +37,30 @@ function EvidenceCard({ evidence, hasSearched }: { evidence: PolicyEvidence[]; h
 }
 
 function MemberAccess({ onVerified }: { onVerified: () => void }) {
-  const [memberId, setMemberId] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const verifyMutation = trpc.care.verifyMember.useMutation({ onSuccess: onVerified });
-  return <div className="min-h-screen bg-[#f7f3ec] text-[#191815]"><div className="mx-auto flex min-h-screen max-w-[1520px] flex-col px-5 py-5 sm:px-8 lg:px-12 lg:py-8"><header className="flex items-center justify-between border-b border-black/30 pb-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/65"><div className="flex items-center gap-3"><HeartPulse className="size-4 text-[#005a48]" /> NovaCorp Health <span className="hidden text-black/35 sm:inline">/ Member access</span></div><div className="flex items-center gap-2"><LockKeyhole className="size-3.5 text-[#005a48]" /> Protected care workspace</div></header><main className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-12 lg:gap-10 lg:py-20"><section className="lg:col-span-7"><SectionLabel>Member services</SectionLabel><h1 className="mt-5 max-w-3xl font-editorial text-[clamp(3.5rem,8vw,8.4rem)] font-semibold leading-[0.84] tracking-[-0.065em]">Care that begins with <em className="font-normal text-[#005a48]">context.</em></h1><p className="mt-8 max-w-xl font-editorial text-2xl leading-8 text-black/62">Verify your member details to open a private, patient-scoped workspace for benefits, care coordination, and appointment support.</p><div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-t border-black/20 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-black/52"><p>Verified identity</p><p>Scoped records</p><p>Guided next steps</p></div></section><section className="nova-panel bg-[#fcfaf6] lg:col-span-4 lg:col-start-9"><SectionLabel>Secure entry</SectionLabel><h2 className="mt-3 font-editorial text-4xl leading-none">Member access</h2><p className="mt-4 text-sm leading-6 text-black/60">Enter the member ID and mobile number associated with your NovaCorp Health record.</p><form className="mt-7 space-y-5" onSubmit={event => { event.preventDefault(); verifyMutation.mutate({ memberId, phoneNumber }); }}><label className="block"><span className="nova-label">Member ID</span><Input value={memberId} onChange={event => setMemberId(event.target.value)} placeholder="e.g. NCG-48219" className="mt-2 rounded-none border-black/25 bg-transparent" autoComplete="username" /></label><label className="block"><span className="nova-label">Mobile number</span><Input value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} placeholder="e.g. 555-010-4821" className="mt-2 rounded-none border-black/25 bg-transparent" autoComplete="tel" /></label>{verifyMutation.error && <p role="alert" className="border-l-2 border-red-800 pl-3 text-xs leading-5 text-red-800">{verifyMutation.error.message}</p>}<Button type="submit" disabled={verifyMutation.isPending || !memberId || !phoneNumber} className="w-full rounded-none bg-[#005a48] text-xs uppercase tracking-[0.14em] hover:bg-[#003d32]">{verifyMutation.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}Verify and continue</Button></form><p className="mt-5 text-[10px] leading-4 uppercase tracking-[0.12em] text-black/45">Your session automatically expires after 30 minutes of inactivity.</p></section></main><footer className="flex justify-between border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45"><p>NovaCorp Health</p><p>Member care coordination</p></footer></div></div>;
+  const beginConversation = trpc.care.beginVerificationConversation.useQuery();
+  const [conversation, setConversation] = useState<Message[]>([]);
+  const [stage, setStage] = useState<"awaiting_member_id" | "awaiting_phone" | "verified">("awaiting_member_id");
+  const [memberId, setMemberId] = useState<string | undefined>();
+  const [toolCall, setToolCall] = useState<string | undefined>();
+  const continueConversation = trpc.care.continueVerificationConversation.useMutation({
+    onSuccess: result => {
+      setConversation(current => [...current, { role: "assistant", content: result.reply }]);
+      setStage(result.stage);
+      setMemberId(result.memberId);
+      setToolCall(result.toolCall);
+      if (result.stage === "verified") window.setTimeout(onVerified, 700);
+    },
+  });
+  useEffect(() => {
+    if (beginConversation.data && conversation.length === 0) setConversation([{ role: "assistant", content: beginConversation.data.reply }]);
+  }, [beginConversation.data, conversation.length]);
+  const onSendMessage = (message: string) => {
+    if (continueConversation.isPending || stage === "verified") return;
+    setConversation(current => [...current, { role: "user", content: message }]);
+    continueConversation.mutate({ stage, message, memberId });
+  };
+  const placeholder = stage === "awaiting_member_id" ? "Enter your member ID…" : "Enter your mobile number…";
+  return <div className="min-h-screen bg-[#f7f3ec] text-[#191815]"><div className="mx-auto flex min-h-screen max-w-[1520px] flex-col px-5 py-5 sm:px-8 lg:px-12 lg:py-8"><header className="flex items-center justify-between border-b border-black/30 pb-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/65"><div className="flex items-center gap-3"><HeartPulse className="size-4 text-[#005a48]" /> NovaCorp Health <span className="hidden text-black/35 sm:inline">/ Private care conversation</span></div><div className="flex items-center gap-2"><LockKeyhole className="size-3.5 text-[#005a48]" /> Protected care workspace</div></header><main className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-12 lg:gap-10 lg:py-20"><section className="lg:col-span-7"><SectionLabel>Member services</SectionLabel><h1 className="mt-5 max-w-3xl font-editorial text-[clamp(3.5rem,8vw,8.4rem)] font-semibold leading-[0.84] tracking-[-0.065em]">Care that begins with <em className="font-normal text-[#005a48]">context.</em></h1><p className="mt-8 max-w-xl font-editorial text-2xl leading-8 text-black/62">A private conversation with Nova begins your care journey, then opens only the workspace associated with your verified member record.</p><div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-t border-black/20 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-black/52"><p>Conversation-led</p><p>Verified identity</p><p>Scoped records</p></div></section><section className="nova-panel bg-[#fcfaf6] lg:col-span-4 lg:col-start-9"><div className="flex items-start justify-between gap-4"><div><SectionLabel>Care assistant</SectionLabel><h2 className="mt-3 font-editorial text-4xl leading-none">Meet Nova.</h2></div><span className="grid size-10 place-items-center rounded-full bg-[#005a48] text-white"><Sparkles className="size-4" /></span></div><p className="mt-4 text-sm leading-6 text-black/60">Nova will ask for your member details in sequence and call the secure verification operation before your workspace opens.</p><div className="mt-6"><AIChatBox messages={conversation} onSendMessage={onSendMessage} isLoading={continueConversation.isPending || beginConversation.isLoading} placeholder={placeholder} emptyStateMessage="Nova is preparing your secure conversation." height="350px" className="!rounded-none !border-black/25 !bg-transparent !shadow-none" /></div>{toolCall && <p className="mt-4 flex items-center gap-2 border-t border-[#005a48]/20 pt-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#005a48]"><ShieldCheck className="size-3.5" /> Secure operation complete · {toolCall}</p>}{continueConversation.error && <p role="alert" className="mt-4 border-l-2 border-red-800 pl-3 text-xs leading-5 text-red-800">{continueConversation.error.message}</p>}<p className="mt-5 text-[10px] leading-4 uppercase tracking-[0.12em] text-black/45">Your session automatically expires after 30 minutes of inactivity.</p></section></main><footer className="flex justify-between border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45"><p>NovaCorp Health</p><p>Member care coordination</p></footer></div></div>;
 }
 
 export default function Home() {
