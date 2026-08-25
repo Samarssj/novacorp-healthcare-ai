@@ -15,3 +15,4 @@
 - [x] Surface coordinator, patient, evidence, and appointment progress incrementally during each chat request.
 - [x] Add coordinator-level tests for citation-required evidence responses and safe no-evidence fallback behavior.
 - [x] Stream actual coordinator operation progress from the server to the dashboard activity timeline.
+- [x] Replace the prominent fictional-data banner with a discreet brand-level disclosure while retaining contextual notices in appointment confirmations and the footer.

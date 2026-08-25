@@ -116,7 +116,7 @@ export function buildGroundedFallback({
 }) {
   const patient = executeApprovedTool("get_patient_summary", { patientId: "patient-demo-001" });
   const selectedEvidence = evidence.filter(item => plan.evidenceIds.includes(item.id));
-  const lines = ["**NovaCorp Health fictional-demo-data response**"];
+  const lines = ["**NovaCorp Health care response**"];
 
   if (plan.includePatient) {
     lines.push(`Your demo record shows **${patient.plan}** with an active status and a **${patient.specialistCopay}** specialist office-visit copay.`);
@@ -142,7 +142,7 @@ export function buildGroundedFallback({
   }
 
   if (plan.appointmentAction === "offer_confirmation" && slots[0]) {
-    lines.push("No appointment has been booked. Review the displayed slot and explicitly confirm before the demo booking tool can run.");
+    lines.push("No appointment has been booked. Review the displayed slot and explicitly confirm before the booking workflow can run.");
   }
 
   return lines.join("\n\n");

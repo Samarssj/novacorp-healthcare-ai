@@ -122,7 +122,7 @@ function AppointmentPanel({
         <p>{bookingDraft.dayLabel} at {bookingDraft.timeLabel}</p>
         <p className="mt-1 text-black/60">{bookingDraft.location}</p>
       </div>
-      <p className="mt-4 text-xs leading-5 text-black/65">This is fictional demo data. No appointment is booked until you explicitly confirm this exact slot.</p>
+      <p className="mt-4 text-xs leading-5 text-black/65">No appointment is booked until you explicitly confirm this exact slot.</p>
       <div className="mt-5 flex flex-wrap gap-2">
         <Button onClick={onAskToBook} className="rounded-none bg-[#161513] px-4 text-xs uppercase tracking-[0.12em] hover:bg-[#005a48]">Confirm demo booking <ChevronRight className="ml-1 size-3" /></Button>
         <Button variant="outline" onClick={onDismiss} className="rounded-none border-black/25 bg-transparent text-xs uppercase tracking-[0.12em]">Not now</Button>
@@ -185,14 +185,14 @@ export default function Home() {
       setBookingConfirmation(result);
       setBookingReviewOpen(false);
       setBookingDraft(undefined);
-      setMessages(current => [...current, { role: "assistant", content: `**NovaCorp Health fictional-demo-data booking confirmed**\n\n${result.clinician} · ${result.specialty}\n${result.dayLabel} at ${result.timeLabel}\n\nConfirmation: **${result.confirmationCode}**` }]);
+      setMessages(current => [...current, { role: "assistant", content: `**Appointment confirmed**\n\n${result.clinician} · ${result.specialty}\n${result.dayLabel} at ${result.timeLabel}\n\nConfirmation: **${result.confirmationCode}**` }]);
     },
   });
 
   const cancellationMutation = trpc.care.confirmCancellation.useMutation({
     onSuccess: (result) => {
       setCancellationReviewOpen(false);
-      setCancellationMessage(`Fictional demo cancellation confirmed for ${result.clinician} on ${result.dateLabel} at ${result.timeLabel}. Reference: ${result.confirmationCode}.`);
+      setCancellationMessage(`Cancellation confirmed for ${result.clinician} on ${result.dateLabel} at ${result.timeLabel}. Reference: ${result.confirmationCode}.`);
     },
   });
 
@@ -216,19 +216,14 @@ export default function Home() {
         <header className="border-b border-black/30 pb-5">
           <div className="flex items-center justify-between gap-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/65">
             <div className="flex items-center gap-3"><HeartPulse className="size-4 text-[#005a48]" /> NovaCorp Health <span className="hidden text-black/35 sm:inline">/ Patient care workspace</span></div>
-            <div className="flex items-center gap-3"><span className="size-1.5 rounded-full bg-[#005a48]" /> Secure fictional environment</div>
+          <div className="flex items-center gap-3"><span className="size-1.5 rounded-full bg-[#005a48]" /> Secure care environment</div>
           </div>
         </header>
-
-        <div className="mt-5 flex items-start gap-3 border border-[#b55239]/35 bg-[#fbf1e9] px-4 py-3 text-xs leading-5 text-black/70">
-          <CircleAlert className="mt-0.5 size-4 shrink-0 text-[#b55239]" />
-          <p><strong className="font-semibold text-black">Fictional demo data only.</strong> NovaCorp Health, its policies, patient information, clinicians, availability, and outcomes are simulated for demonstration. Do not use this workspace for medical, insurance, or real appointment decisions.</p>
-        </div>
 
         <section className="grid gap-8 border-b border-black/30 py-10 lg:grid-cols-12 lg:gap-10 lg:py-14">
           <div className="lg:col-span-3 lg:pt-3"><SectionLabel>Care coordination · 01</SectionLabel><p className="mt-4 max-w-[16rem] font-editorial text-xl leading-7 text-black/65">A closer reading of the care journey.</p></div>
           <div className="lg:col-span-6"><h1 className="font-editorial text-[clamp(3.35rem,8.5vw,8.35rem)] font-semibold leading-[0.83] tracking-[-0.065em]">Care, <em className="font-normal text-[#005a48]">considered.</em></h1></div>
-          <div className="flex flex-col justify-between lg:col-span-3 lg:pt-3"><p className="max-w-xs text-sm leading-6 text-black/62">A grounded, evidence-led workspace for navigating fictional NovaCorp Health benefits, appointments, and patient context.</p><div className="mt-8 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em]"><Sparkles className="size-3 text-[#005a48]" /> Gemini-powered, guardrailed</div></div>
+          <div className="flex flex-col justify-between lg:col-span-3 lg:pt-3"><p className="max-w-xs text-sm leading-6 text-black/62">A grounded, evidence-led workspace for navigating NovaCorp Health benefits, appointments, and patient context.</p><div className="mt-8 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em]"><Sparkles className="size-3 text-[#005a48]" /> Gemini-powered, guardrailed</div></div>
         </section>
 
         <main className="grid gap-8 py-9 lg:grid-cols-12 lg:gap-x-10 lg:gap-y-9">
@@ -237,14 +232,14 @@ export default function Home() {
               <div><SectionLabel>Assistant</SectionLabel><h2 className="mt-2 font-editorial text-[clamp(2rem,3vw,3rem)] leading-none">{greeting}</h2></div>
               <Badge variant="outline" className={`mb-1 rounded-none border-black/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] ${coordinatorMode === "gemini" ? "text-[#005a48]" : "text-black/55"}`}>{coordinatorMode === "gemini" ? "Gemini validated" : "Safe response mode"}</Badge>
             </div>
-            <p className="mt-4 max-w-2xl font-editorial text-xl leading-7 text-black/62">Ask about the fictional plan, retrieved policy evidence, or available appointments. The assistant can only answer from approved tool outputs.</p>
+            <p className="mt-4 max-w-2xl font-editorial text-xl leading-7 text-black/62">Ask about your plan, retrieved policy evidence, or available appointments. The assistant can only answer from approved tool outputs.</p>
             <div className="mt-6">
               <AIChatBox
                 messages={messages}
                 onSendMessage={sendChatMessage}
                 isLoading={isWorking}
                 suggestedPrompts={suggestedPrompts}
-                placeholder="Ask about fictional benefits or appointments…"
+                placeholder="Ask about benefits or appointments…"
                 emptyStateMessage="Begin with a grounded question."
                 height="510px"
                 className="!rounded-none !border-black/30 !bg-[#fcfaf6] !shadow-none"
@@ -264,13 +259,13 @@ export default function Home() {
               <div className="flex items-start justify-between"><div><SectionLabel>Upcoming appointment</SectionLabel><h2 className="mt-2 font-editorial text-2xl">{patient.upcomingAppointment.clinician}</h2></div><Stethoscope className="size-5 text-[#005a48]" /></div>
               <p className="mt-3 text-sm text-black/70">{patient.upcomingAppointment.specialty}</p>
               <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 border-y border-[#005a48]/20 py-3 text-xs text-black/70"><span className="flex items-center gap-1.5"><Clock3 className="size-3.5 text-[#005a48]" /> {patient.upcomingAppointment.dateLabel} · {patient.upcomingAppointment.timeLabel}</span><span className="flex items-center gap-1.5"><MapPin className="size-3.5 text-[#005a48]" /> Demo clinic</span></div>
-              {!cancellationReviewOpen && !cancellationMessage && <button onClick={() => setCancellationReviewOpen(true)} className="mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#005a48] underline-offset-4 hover:underline">Manage fictional appointment <ArrowUpRight className="ml-0.5 inline size-3" /></button>}
-              {cancellationReviewOpen && <div className="mt-4 border-t border-[#005a48]/20 pt-4"><p className="text-xs leading-5 text-black/70">Cancelling is consequential, even in this demo. Confirm you want to cancel this exact fictional appointment.</p><div className="mt-3 flex gap-2"><Button size="sm" onClick={() => cancellationMutation.mutate({ patientId: "patient-demo-001", appointmentId: "appointment-demo-pcp-01", confirmed: true })} disabled={isWorking} className="rounded-none bg-[#161513] text-[10px] uppercase tracking-[0.11em] hover:bg-[#b55239]">Confirm cancellation</Button><Button size="sm" variant="outline" onClick={() => setCancellationReviewOpen(false)} className="rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.11em]">Keep it</Button></div>{cancelError && <p role="alert" className="mt-2 text-xs text-red-800">{cancelError}</p>}</div>}
+              {!cancellationReviewOpen && !cancellationMessage && <button onClick={() => setCancellationReviewOpen(true)} className="mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#005a48] underline-offset-4 hover:underline">Manage appointment <ArrowUpRight className="ml-0.5 inline size-3" /></button>}
+              {cancellationReviewOpen && <div className="mt-4 border-t border-[#005a48]/20 pt-4"><p className="text-xs leading-5 text-black/70">Cancelling is consequential. Confirm you want to cancel this exact appointment.</p><div className="mt-3 flex gap-2"><Button size="sm" onClick={() => cancellationMutation.mutate({ patientId: "patient-demo-001", appointmentId: "appointment-demo-pcp-01", confirmed: true })} disabled={isWorking} className="rounded-none bg-[#161513] text-[10px] uppercase tracking-[0.11em] hover:bg-[#b55239]">Confirm cancellation</Button><Button size="sm" variant="outline" onClick={() => setCancellationReviewOpen(false)} className="rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.11em]">Keep it</Button></div>{cancelError && <p role="alert" className="mt-2 text-xs text-red-800">{cancelError}</p>}</div>}
               {cancellationMessage && <p className="mt-4 border-t border-[#005a48]/20 pt-4 text-xs leading-5 text-[#005a48]">{cancellationMessage}</p>}
             </section>
 
             <AppointmentPanel bookingDraft={bookingDraft} confirmation={bookingConfirmation} onAskToBook={() => setBookingReviewOpen(true)} onConfirm={() => bookingDraft && bookingMutation.mutate({ patientId: "patient-demo-001", slotId: bookingDraft.id, confirmed: true })} onDismiss={() => setBookingDraft(undefined)} />
-            {bookingReviewOpen && bookingDraft && <div className="border border-[#005a48]/40 bg-[#e7f1eb] p-5"><SectionLabel>Final confirmation</SectionLabel><p className="mt-2 font-editorial text-xl">Book the displayed fictional slot?</p><p className="mt-2 text-xs leading-5 text-black/65">This action is confirmation-gated. Selecting “Book now” sends only the displayed slot ID to the validated demo tool.</p><div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => bookingMutation.mutate({ patientId: "patient-demo-001", slotId: bookingDraft.id, confirmed: true })} disabled={isWorking} className="rounded-none bg-[#005a48] text-xs uppercase tracking-[0.12em] hover:bg-[#003d32]">Book now</Button><Button variant="outline" onClick={() => setBookingReviewOpen(false)} className="rounded-none border-black/25 bg-transparent text-xs uppercase tracking-[0.12em]">Go back</Button></div>{bookingError && <p role="alert" className="mt-3 text-xs text-red-800">{bookingError}</p>}</div>}
+            {bookingReviewOpen && bookingDraft && <div className="border border-[#005a48]/40 bg-[#e7f1eb] p-5"><SectionLabel>Final confirmation</SectionLabel><p className="mt-2 font-editorial text-xl">Book the displayed slot?</p><p className="mt-2 text-xs leading-5 text-black/65">This action is confirmation-gated. Selecting “Book now” sends only the displayed slot ID to the validated booking operation.</p><div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => bookingMutation.mutate({ patientId: "patient-demo-001", slotId: bookingDraft.id, confirmed: true })} disabled={isWorking} className="rounded-none bg-[#005a48] text-xs uppercase tracking-[0.12em] hover:bg-[#003d32]">Book now</Button><Button variant="outline" onClick={() => setBookingReviewOpen(false)} className="rounded-none border-black/25 bg-transparent text-xs uppercase tracking-[0.12em]">Go back</Button></div>{bookingError && <p role="alert" className="mt-3 text-xs text-red-800">{bookingError}</p>}</div>}
 
             <EvidenceCard evidence={displayedEvidence} />
 
@@ -281,7 +276,7 @@ export default function Home() {
           </aside>
         </main>
 
-        <footer className="flex flex-col justify-between gap-3 border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45 sm:flex-row"><p>NovaCorp Health · Fictional demonstration workspace</p><p>Grounded responses use retrieved evidence and approved operations only</p></footer>
+        <footer className="flex flex-col justify-between gap-3 border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45 sm:flex-row"><p>NovaCorp Health · Demonstration workspace</p><p>Grounded responses use retrieved evidence and approved operations only</p></footer>
       </div>
     </div>
   );

@@ -19,7 +19,7 @@ const JOINT_REPLACEMENT: PolicyEvidence = {
   plan: "NovaCorp Gold Plus",
   relevance: 0.91,
   excerpt:
-    "Knee replacement procedures require prior authorization and clinical review. Coverage remains subject to plan eligibility and member cost share. This demonstration evidence does not establish approval for an individual case.",
+    "Knee replacement procedures require prior authorization and clinical review. Coverage remains subject to plan eligibility and member cost share. This excerpt does not establish approval for an individual case.",
 };
 
 const APPOINTMENT_SLOTS: AppointmentSlot[] = [
@@ -71,13 +71,13 @@ export const demoWorkspace: CareWorkspace = {
       agent: "Coordinator",
       action: "Workspace initialized",
       state: "complete",
-      detail: "Approved fictional-data tools are ready.",
+      detail: "Approved care operations are ready.",
     },
     {
       agent: "Patient Agent",
       action: "Patient record ready",
       state: "complete",
-      detail: "Typed demo profile loaded for Avery Carter.",
+      detail: "Typed patient profile loaded for Avery Carter.",
     },
     {
       agent: "Insurance RAG",
