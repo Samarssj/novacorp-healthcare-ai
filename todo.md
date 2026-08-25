@@ -16,3 +16,11 @@
 - [x] Add coordinator-level tests for citation-required evidence responses and safe no-evidence fallback behavior.
 - [x] Stream actual coordinator operation progress from the server to the dashboard activity timeline.
 - [x] Replace the prominent fictional-data banner with a discreet brand-level disclosure while retaining contextual notices in appointment confirmations and the footer.
+- [x] Document the current single-patient workflow before changing the implementation.
+- [x] Define a multi-patient schema with per-patient member ID and phone-number verification fields.
+- [x] Implement member-ID-and-phone patient verification before creating a care session.
+- [x] Scope all patient, policy, appointment, and tool access to the verified patient session.
+- [x] Add intent classification and route validated requests to patient, insurance, appointment, or summary specialist agents.
+- [x] Replace the current demo-oriented UI language with a professional enterprise care experience and verification entry flow.
+- [x] Add automated tests for multi-patient verification, patient-session isolation, and specialist-agent routing.
+- [x] Add deployment documentation and configuration guidance for a stateless Render-compatible Node service.

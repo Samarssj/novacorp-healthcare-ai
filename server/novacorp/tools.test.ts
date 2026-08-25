@@ -1,106 +1,69 @@
 import { describe, expect, it } from "vitest";
-import { searchPolicyEvidence } from "./demoData";
-import { buildGroundedFallback, isGroundedReplyAllowed } from "./coordinator";
+import { getPatientWorkspace, normalizeMemberId, normalizePhoneNumber, verifyPatientCredentials } from "./careData";
+import { buildGroundedFallback, fallbackRoute, isGroundedReplyAllowed } from "./coordinator";
+import { searchPolicyEvidence, searchPolicyEvidenceForPlan } from "./demoData";
 import { approvedModelTools, novacorpOpenApi } from "./openapi";
-import { executeApprovedTool } from "./tools";
+import { createPatientSession, resolvePatientSession } from "./session";
+import { approvedOperationInputs } from "./tools";
 
-describe("NovaCorp grounded tool contract", () => {
-  it("returns no evidence for an unsupported policy topic", () => {
-    expect(searchPolicyEvidence("Does this plan cover a fictional dermatology concierge service?")).toEqual([]);
+describe("NovaCorp grounded multi-patient contract", () => {
+  it("normalizes the member credentials used for deterministic verification", () => {
+    expect(normalizeMemberId(" ncg-48219 ")).toBe("NCG-48219");
+    expect(normalizePhoneNumber("555-010-4821")).toBe("+15550104821");
   });
 
-  it("returns cited NovaCorp Gold Plus evidence for an orthopedic query", () => {
-    const evidence = executeApprovedTool("search_policy_evidence", {
-      query: "Does my plan cover an orthopedic consultation?",
-      plan: "NovaCorp Gold Plus",
-    });
-
-    expect(evidence).toHaveLength(1);
-    expect(evidence[0]).toMatchObject({
-      document: "NovaCorp Gold Plus Member Handbook",
-      section: "Specialist office consultations",
-      page: 42,
-    });
-  });
-
-  it("rejects an appointment booking without an explicit true confirmation", () => {
-    expect(() => executeApprovedTool("book_appointment", {
-      patientId: "patient-demo-001",
-      slotId: "orthopedics-early-01",
-      confirmed: false,
-    })).toThrow();
-  });
-
-  it("returns booking success details only after validated confirmation", () => {
-    const booking = executeApprovedTool("book_appointment", {
-      patientId: "patient-demo-001",
-      slotId: "orthopedics-early-01",
-      confirmed: true,
-    });
-
-    expect(booking).toMatchObject({
-      status: "confirmed",
-      confirmationCode: "NC-DEMO-ORTHO-8821",
-      clinician: "Dr. Mara Leung",
-    });
-  });
-
-  it("rejects appointment cancellation without explicit confirmation", () => {
-    expect(() => executeApprovedTool("cancel_appointment", {
-      patientId: "patient-demo-001",
-      appointmentId: "appointment-demo-pcp-01",
-      confirmed: false,
-    })).toThrow();
+  it("requires explicit confirmation in booking and cancellation tool inputs", () => {
+    expect(approvedOperationInputs.book_appointment.safeParse({ patientId: "patient-avery", slotId: "slot-ortho-01", confirmed: false }).success).toBe(false);
+    expect(approvedOperationInputs.cancel_appointment.safeParse({ patientId: "patient-avery", appointmentId: "appointment-avery-pcp", confirmed: false }).success).toBe(false);
   });
 
   it("exposes confirmation-gated booking and cancellation in OpenAPI-derived tools", () => {
-    const toolNames = approvedModelTools.map(tool => tool.function.name);
-
-    expect(toolNames).toEqual(expect.arrayContaining(["book_appointment", "cancel_appointment"]));
+    expect(approvedModelTools.map(tool => tool.function.name)).toEqual(expect.arrayContaining(["book_appointment", "cancel_appointment"]));
     expect(novacorpOpenApi.paths).toHaveProperty("/appointments/book");
     expect(novacorpOpenApi.paths).toHaveProperty("/appointments/cancel");
   });
 
-  it("requires citations when a coordinator response selects retrieved evidence", () => {
-    const evidence = searchPolicyEvidence("Can I see an orthopedic specialist?");
-    expect(isGroundedReplyAllowed({
-      candidate: {
-        reply: "The fictional policy excerpt supports a specialist office consultation.",
-        evidenceIds: [evidence[0]!.id],
-        asksForConfirmation: false,
-      },
-      evidence,
-      needsConfirmation: false,
-    })).toBe(false);
-
-    expect(isGroundedReplyAllowed({
-      candidate: {
-        reply: `The fictional policy excerpt supports a specialist office consultation. [${evidence[0]!.document}, ${evidence[0]!.section}, p. ${evidence[0]!.page}]`,
-        evidenceIds: [evidence[0]!.id],
-        asksForConfirmation: false,
-      },
-      evidence,
-      needsConfirmation: false,
-    })).toBe(true);
+  it("returns no insurance evidence for a plan without matching approved policy material", () => {
+    expect(searchPolicyEvidenceForPlan("Does my plan cover an orthopedic consultation?", "NovaCorp Silver Select")).toEqual([]);
   });
 
-  it("blocks unsupported coverage language in a no-evidence response and uses a conservative fallback", () => {
-    const noEvidence = [];
-    expect(isGroundedReplyAllowed({
-      candidate: {
-        reply: "Your fictional plan covers that service.",
-        evidenceIds: [],
-        asksForConfirmation: false,
-      },
-      evidence: noEvidence,
-      needsConfirmation: false,
-    })).toBe(false);
+  it("routes combined benefit and appointment questions to the required specialists", () => {
+    expect(fallbackRoute("Does my plan cover knee replacement and can I book an orthopedic appointment?")).toEqual(expect.arrayContaining(["patient", "insurance", "appointment"]));
+  });
 
-    const fallback = buildGroundedFallback({
-      plan: { includePatient: false, evidenceIds: [], includeAvailability: false, appointmentAction: "none" },
-      evidence: noEvidence,
-      slots: [],
-    });
+  it("requires citations when a coordinator response selects retrieved evidence", () => {
+    const evidence = searchPolicyEvidence("Can I see an orthopedic specialist?");
+    expect(isGroundedReplyAllowed({ candidate: { reply: "The policy excerpt supports a specialist consultation.", evidenceIds: [evidence[0]!.id], asksForConfirmation: false }, evidence, needsConfirmation: false })).toBe(false);
+    expect(isGroundedReplyAllowed({ candidate: { reply: `The policy excerpt supports a specialist consultation. [${evidence[0]!.document}, ${evidence[0]!.section}, p. ${evidence[0]!.page}]`, evidenceIds: [evidence[0]!.id], asksForConfirmation: false }, evidence, needsConfirmation: false })).toBe(true);
+  });
+
+  it("blocks unsupported coverage language and uses a conservative no-evidence fallback", () => {
+    expect(isGroundedReplyAllowed({ candidate: { reply: "Your plan covers that service.", evidenceIds: [], asksForConfirmation: false }, evidence: [], needsConfirmation: false })).toBe(false);
+    const fallback = buildGroundedFallback({ patient: { id: "patient-test", name: "Test Patient", initials: "TP", dateOfBirth: "January 1, 1990", plan: "NovaCorp Silver Select", memberId: "NCS-00001", planStatus: "Active", specialistCopay: "$0", deductibleRemaining: "$0", medications: [], allergies: [] }, plan: { includePatient: false, evidenceIds: [], includeAvailability: false, appointmentAction: "none" }, evidence: [], slots: [] });
     expect(fallback).toContain("cannot make a coverage claim");
+  });
+});
+
+describe.runIf(Boolean(process.env.DATABASE_URL))("NovaCorp verified-patient database integration", () => {
+  it("verifies multiple member records and isolates their workspaces", async () => {
+    const [avery, maya] = await Promise.all([
+      verifyPatientCredentials("NCG-48219", "555-010-4821"),
+      verifyPatientCredentials("NCG-91577", "555-010-9157"),
+    ]);
+    expect(avery.id).toBe("patient-avery");
+    expect(maya.id).toBe("patient-maya");
+    const [averyWorkspace, mayaWorkspace] = await Promise.all([getPatientWorkspace(avery.id), getPatientWorkspace(maya.id)]);
+    expect(averyWorkspace.patient.memberId).toBe("NCG-48219");
+    expect(mayaWorkspace.patient.memberId).toBe("NCG-91577");
+    expect(averyWorkspace.patient.medications).not.toEqual(mayaWorkspace.patient.medications);
+  });
+
+  it("signs a patient-scoped session that resolves only to the verified subject", async () => {
+    const token = await createPatientSession("patient-maya");
+    await expect(resolvePatientSession(token)).resolves.toBe("patient-maya");
+  });
+
+  it("rejects a nonmatching member and phone combination", async () => {
+    await expect(verifyPatientCredentials("NCG-48219", "555-010-9157")).rejects.toThrow("could not verify");
   });
 });

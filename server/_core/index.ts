@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { parse } from "cookie";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -9,6 +10,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { runCoordinator } from "../novacorp/coordinator";
+import { PATIENT_SESSION_COOKIE, resolvePatientSession } from "../novacorp/session";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -45,10 +47,26 @@ async function startServer() {
       createContext,
     })
   );
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok", service: "novacorp-healthcare-ai" });
+  });
   app.get("/api/novacorp/chat-stream", async (req, res) => {
     const message = typeof req.query.message === "string" ? req.query.message.trim().slice(0, 1600) : "";
     if (!message) {
       res.status(400).json({ error: "A chat message is required." });
+      return;
+    }
+
+    const token = parse(req.headers.cookie ?? "")[PATIENT_SESSION_COOKIE];
+    if (!token) {
+      res.status(401).json({ error: "Verify your member details to access the care workspace." });
+      return;
+    }
+    let patientId: string;
+    try {
+      patientId = await resolvePatientSession(token);
+    } catch {
+      res.status(401).json({ error: "Your verified care session has expired. Please verify your member details again." });
       return;
     }
 
@@ -70,7 +88,7 @@ async function startServer() {
     };
 
     try {
-      const result = await runCoordinator({ message }, activities => sendEvent("activity", activities));
+      const result = await runCoordinator({ patientId, message }, activities => sendEvent("activity", activities));
       sendEvent("result", result);
     } catch (error) {
       sendEvent("error", { message: error instanceof Error ? error.message : "The fictional demo coordinator could not complete this request." });

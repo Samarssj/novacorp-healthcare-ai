@@ -1,57 +1,38 @@
 import type { Tool } from "../_core/llm";
 
-const patientId = {
+const verifiedSession = {
   type: "string",
-  description: "The fictional demo patient identifier.",
+  description: "Resolved server-side from the verified member session; never supplied by the model or browser action payload.",
 };
 
 export const novacorpOpenApi = {
   openapi: "3.1.0",
   info: {
-    title: "NovaCorp Health Demo Care Tools",
-    version: "1.0.0",
-    description:
-      "Fictional demonstration contract. All operations use fictional NovaCorp Health data and may not be used for real healthcare decisions.",
+    title: "NovaCorp Health Care Operations",
+    version: "2.0.0",
+    description: "Internal, approved operations for a verified member care workspace. The server resolves patient identity from a signed session and enforces confirmation for consequential actions.",
   },
   paths: {
-    "/patient/{patientId}": {
-      get: {
-        operationId: "get_patient_summary",
-        summary: "Retrieve a fictional patient record.",
-      },
-    },
-    "/policy/search": {
-      post: {
-        operationId: "search_policy_evidence",
-        summary: "Retrieve grounded fictional NovaCorp policy evidence.",
-      },
-    },
-    "/appointments/availability": {
-      post: {
-        operationId: "search_appointment_availability",
-        summary: "Find fictional available appointment slots.",
-      },
-    },
-    "/appointments/book": {
-      post: {
-        operationId: "book_appointment",
-        summary: "Book a fictional appointment only after explicit confirmation.",
-      },
-    },
-    "/appointments/cancel": {
-      post: {
-        operationId: "cancel_appointment",
-        summary: "Cancel a fictional appointment only after explicit confirmation.",
-      },
-    },
+    "/member/verify": { post: { operationId: "verify_member", summary: "Verify member ID and mobile number, then establish a signed care session." } },
+    "/patient/current": { get: { operationId: "get_patient_summary", summary: "Retrieve the verified member's patient profile." } },
+    "/policy/search": { post: { operationId: "search_policy_evidence", summary: "Retrieve cited policy evidence for the verified member's plan." } },
+    "/appointments/availability": { post: { operationId: "search_appointment_availability", summary: "Find available appointment slots for the verified member." } },
+    "/appointments/book": { post: { operationId: "book_appointment", summary: "Book an appointment only after explicit confirmation." } },
+    "/appointments/cancel": { post: { operationId: "cancel_appointment", summary: "Cancel an appointment only after explicit confirmation." } },
   },
   components: {
     schemas: {
-      PatientId: patientId,
+      VerifiedSession: verifiedSession,
+      MemberVerificationRequest: {
+        type: "object",
+        properties: { memberId: { type: "string" }, phoneNumber: { type: "string" } },
+        required: ["memberId", "phoneNumber"],
+        additionalProperties: false,
+      },
       PolicySearchRequest: {
         type: "object",
-        properties: { query: { type: "string" }, plan: { type: "string" } },
-        required: ["query", "plan"],
+        properties: { query: { type: "string" } },
+        required: ["query"],
         additionalProperties: false,
       },
       AppointmentSearchRequest: {
@@ -62,87 +43,25 @@ export const novacorpOpenApi = {
       },
       BookingRequest: {
         type: "object",
-        properties: {
-          patientId,
-          slotId: { type: "string" },
-          confirmed: { type: "boolean", description: "Must be true after explicit user confirmation." },
-        },
-        required: ["patientId", "slotId", "confirmed"],
+        properties: { slotId: { type: "string" }, confirmed: { type: "boolean", description: "Must be true after an explicit member confirmation." } },
+        required: ["slotId", "confirmed"],
         additionalProperties: false,
       },
       CancellationRequest: {
         type: "object",
-        properties: {
-          patientId,
-          appointmentId: { type: "string" },
-          confirmed: { type: "boolean", description: "Must be true after explicit user confirmation." },
-        },
-        required: ["patientId", "appointmentId", "confirmed"],
+        properties: { appointmentId: { type: "string" }, confirmed: { type: "boolean", description: "Must be true after an explicit member confirmation." } },
+        required: ["appointmentId", "confirmed"],
         additionalProperties: false,
       },
     },
   },
 } as const;
 
+/** Model-facing declarations intentionally omit patient identity: the server injects it from the signed session. */
 export const approvedModelTools: Tool[] = [
-  {
-    type: "function",
-    function: {
-      name: "get_patient_summary",
-      description: "Return the typed fictional NovaCorp patient profile for the current demo workspace.",
-      parameters: { type: "object", properties: { patientId }, required: ["patientId"], additionalProperties: false },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_policy_evidence",
-      description: "Search fictional NovaCorp Gold Plus policy excerpts and return citations. Never infer coverage without returned evidence.",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string" }, plan: { type: "string" } },
-        required: ["query", "plan"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_appointment_availability",
-      description: "Search fictional available appointment slots. This operation does not book an appointment.",
-      parameters: {
-        type: "object",
-        properties: { specialty: { type: "string" } },
-        required: ["specialty"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "book_appointment",
-      description: "Book a fictional appointment only when the user has clearly confirmed the displayed slot.",
-      parameters: {
-        type: "object",
-        properties: { patientId, slotId: { type: "string" }, confirmed: { type: "boolean" } },
-        required: ["patientId", "slotId", "confirmed"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cancel_appointment",
-      description: "Cancel a fictional appointment only when the user has clearly confirmed the displayed appointment.",
-      parameters: {
-        type: "object",
-        properties: { patientId, appointmentId: { type: "string" }, confirmed: { type: "boolean" } },
-        required: ["patientId", "appointmentId", "confirmed"],
-        additionalProperties: false,
-      },
-    },
-  },
+  { type: "function", function: { name: "get_patient_summary", description: "Return the verified member's typed patient profile.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "search_policy_evidence", description: "Search approved policy excerpts for the verified member's plan and return citations. Never infer coverage without returned evidence.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
+  { type: "function", function: { name: "search_appointment_availability", description: "Search available appointment slots for the verified member. This operation does not book an appointment.", parameters: { type: "object", properties: { specialty: { type: "string" } }, required: ["specialty"], additionalProperties: false } } },
+  { type: "function", function: { name: "book_appointment", description: "Book an appointment only when the member has clearly confirmed the displayed slot.", parameters: { type: "object", properties: { slotId: { type: "string" }, confirmed: { type: "boolean" } }, required: ["slotId", "confirmed"], additionalProperties: false } } },
+  { type: "function", function: { name: "cancel_appointment", description: "Cancel an appointment only when the member has clearly confirmed the displayed appointment.", parameters: { type: "object", properties: { appointmentId: { type: "string" }, confirmed: { type: "boolean" } }, required: ["appointmentId", "confirmed"], additionalProperties: false } } },
 ];

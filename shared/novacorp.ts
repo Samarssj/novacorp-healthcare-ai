@@ -41,12 +41,13 @@ export type CareWorkspace = {
     dateOfBirth: string;
     plan: string;
     memberId: string;
-    planStatus: "Active";
+    planStatus: "Active" | "Inactive";
     specialistCopay: string;
     deductibleRemaining: string;
     medications: Array<{ name: string; dosage: string }>;
     allergies: string[];
-    upcomingAppointment: {
+    upcomingAppointment?: {
+      id: string;
       clinician: string;
       specialty: string;
       dateLabel: string;

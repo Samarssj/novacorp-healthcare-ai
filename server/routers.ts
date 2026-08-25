@@ -1,14 +1,30 @@
+import { parse } from "cookie";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { confirmDemoBooking, runCoordinator } from "./novacorp/coordinator";
-import { demoWorkspace, getDemoPatient, searchAppointmentAvailability, searchPolicyEvidence } from "./novacorp/demoData";
+import { getPatientWorkspace, verifyPatientCredentials } from "./novacorp/careData";
+import { runCoordinator } from "./novacorp/coordinator";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
+import { createPatientSession, PATIENT_SESSION_COOKIE, resolvePatientSession } from "./novacorp/session";
 import { executeApprovedTool } from "./novacorp/tools";
 
-const patientIdSchema = z.literal("patient-demo-001");
+const memberVerificationSchema = z.object({
+  memberId: z.string().trim().min(5).max(64),
+  phoneNumber: z.string().trim().min(8).max(32),
+}).strict();
+
+async function requireVerifiedPatient(cookieHeader: string | undefined) {
+  const token = parse(cookieHeader ?? "")[PATIENT_SESSION_COOKIE];
+  if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "Verify your member details to access the care workspace." });
+  try {
+    return await resolvePatientSession(token);
+  } catch {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Your verified care session has expired. Please verify your member details again." });
+  }
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -21,13 +37,32 @@ export const appRouter = router({
     }),
   }),
   care: router({
-    getWorkspace: publicProcedure.query(() => demoWorkspace),
-    getPatient: publicProcedure.input(patientIdSchema).query(() => getDemoPatient()),
-    searchEvidence: publicProcedure.input(z.object({ query: z.string().trim().min(1).max(800) }).strict()).query(({ input }) => searchPolicyEvidence(input.query)),
-    searchAvailability: publicProcedure.input(z.object({ query: z.string().trim().min(1).max(800) }).strict()).query(({ input }) => searchAppointmentAvailability(input.query)),
-    sendMessage: publicProcedure.input(z.object({ message: z.string().trim().min(1).max(1600) }).strict()).mutation(({ input }) => runCoordinator({ message: input.message })),
-    confirmBooking: publicProcedure.input(z.object({ patientId: patientIdSchema, slotId: z.string().trim().min(1), confirmed: z.literal(true) }).strict()).mutation(({ input }) => confirmDemoBooking(input)),
-    confirmCancellation: publicProcedure.input(z.object({ patientId: patientIdSchema, appointmentId: z.literal("appointment-demo-pcp-01"), confirmed: z.literal(true) }).strict()).mutation(({ input }) => executeApprovedTool("cancel_appointment", input)),
+    verifyMember: publicProcedure.input(memberVerificationSchema).mutation(async ({ input, ctx }) => {
+      const patient = await verifyPatientCredentials(input.memberId, input.phoneNumber);
+      const token = await createPatientSession(patient.id);
+      ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
+      return { patient: { name: patient.name, memberId: patient.memberId, plan: patient.plan } };
+    }),
+    signOutPatient: publicProcedure.mutation(({ ctx }) => {
+      ctx.res.clearCookie(PATIENT_SESSION_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+      return { success: true } as const;
+    }),
+    getWorkspace: publicProcedure.query(async ({ ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return getPatientWorkspace(patientId);
+    }),
+    sendMessage: publicProcedure.input(z.object({ message: z.string().trim().min(1).max(1600) }).strict()).mutation(async ({ input, ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return runCoordinator({ patientId, message: input.message });
+    }),
+    confirmBooking: publicProcedure.input(z.object({ slotId: z.string().trim().min(1), confirmed: z.literal(true) }).strict()).mutation(async ({ input, ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return executeApprovedTool("book_appointment", { patientId, ...input });
+    }),
+    confirmCancellation: publicProcedure.input(z.object({ appointmentId: z.string().trim().min(1), confirmed: z.literal(true) }).strict()).mutation(async ({ input, ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return executeApprovedTool("cancel_appointment", { patientId, ...input });
+    }),
     openApi: publicProcedure.query(() => novacorpOpenApi),
     approvedTools: publicProcedure.query(() => approvedModelTools),
   }),

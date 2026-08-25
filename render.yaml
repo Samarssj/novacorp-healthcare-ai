@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: novacorp-healthcare-ai
+    runtime: node
+    buildCommand: pnpm install --frozen-lockfile && pnpm render-build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BUILT_IN_FORGE_API_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash

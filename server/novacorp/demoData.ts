@@ -58,6 +58,7 @@ export const demoWorkspace: CareWorkspace = {
     ],
     allergies: ["Penicillin", "Shellfish"],
     upcomingAppointment: {
+      id: "appointment-demo-pcp-01",
       clinician: "Dr. Elena Park",
       specialty: "Primary care",
       dateLabel: "September 3",
@@ -108,6 +109,10 @@ export function searchPolicyEvidence(query: string): PolicyEvidence[] {
   }
 
   return [ORTHOPEDIC_CONSULTATION];
+}
+
+export function searchPolicyEvidenceForPlan(query: string, plan: string): PolicyEvidence[] {
+  return plan === "NovaCorp Gold Plus" ? searchPolicyEvidence(query) : [];
 }
 
 export function searchAppointmentAvailability(query: string): AppointmentSlot[] {
