@@ -234,7 +234,7 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(onAssistantVoiceMessage).toHaveBeenCalledWith("Would you like to end your care session? Say yes to end your session, or no to keep it open.");
   });
 
-  it("ends the session when the member says yes to Nova's explicit end-session prompt", async () => {
+  it.each(["Yes", "and the session"])("ends the session when the member says %s to Nova's explicit end-session prompt", async transcript => {
     const user = userEvent.setup();
     render(<VoiceConversationControls onTranscript={vi.fn()} />);
 
@@ -245,7 +245,7 @@ describe("VoiceConversationControls native silence recovery", () => {
     });
     await user.click(screen.getByRole("button", { name: /end session/i }));
     await new Promise(resolve => setTimeout(resolve, 275));
-    await act(async () => FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "Yes" }]] }));
+    await act(async () => FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript }]] }));
     await new Promise(resolve => setTimeout(resolve, 375));
 
     expect(screen.getByText(/Nova is ending your session/i)).toBeTruthy();

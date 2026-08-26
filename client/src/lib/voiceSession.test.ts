@@ -46,5 +46,6 @@ describe("voice session completion", () => {
     expect(decideEndSessionConfirmation("Goodbye")).toBe("end");
     expect(decideEndSessionConfirmation("No, keep it open")).toBe("continue");
     expect(decideEndSessionConfirmation("I'm not sure yet")).toBe("continue");
+    expect(decideEndSessionConfirmation("and the session")).toBe("end");
   });
 });

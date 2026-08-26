@@ -99,6 +99,8 @@ describe("Home hands-free verification lifecycle", () => {
 
     await waitFor(() => expect(screen.getByText("Care,", { exact: false })).toBeTruthy(), { timeout: 1500 });
     expect(await screen.findByText("You are verified. What can I help you with today?")).toBeTruthy();
+    expect(screen.getByText("Welcome to NovaCorp Health. Please share your member ID.")).toBeTruthy();
+    expect(screen.getByText("NCG-48219")).toBeTruthy();
     expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "You are verified. What can I help you with today?" }));
     await waitFor(() => expect(FakeSpeechRecognition.latest).not.toBeNull());
   });

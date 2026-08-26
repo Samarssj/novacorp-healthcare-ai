@@ -29,6 +29,7 @@ vi.mock("@/components/AIChatBox", () => ({
     {placeholder?.includes("benefits") ? <>
       <button onClick={() => onSendMessage("Ok thanks, have a great day")}>Send courteous closure</button>
       <button onClick={() => onSendMessage("Help me book an appointment.")}>Send booking request</button>
+      <button onClick={() => onSendMessage("and the session")}>Send partial end session</button>
     </> : <button onClick={() => onSendMessage("NCG-48219")}>Verify member</button>}
     {messages.map((message, index) => <p key={index}>{message.content}</p>)}
   </div>,
@@ -46,6 +47,7 @@ describe("verified typed session closure", () => {
 
     await user.click(await screen.findByRole("button", { name: /verify member/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /send courteous closure/i })).toBeTruthy());
+    expect(screen.getByText("Verified.")).toBeTruthy();
     expect(screen.getByText(/medication list, allergies, cited policy evidence/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /send courteous closure/i }));
 
@@ -66,5 +68,22 @@ describe("verified typed session closure", () => {
 
     expect(eventSource).toHaveBeenCalledWith(expect.stringContaining("Help%20me%20book%20an%20appointment"));
     expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("ends a typed confirmed session on the partial phrase without opening a coordinator stream", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("EventSource", eventSource);
+    render(<Home />);
+
+    await user.click(await screen.findByRole("button", { name: /verify member/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /send partial end session/i })).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /^end session$/i }));
+    expect(await screen.findByText(/Say yes to end your session/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /send partial end session/i }));
+
+    expect(await screen.findByText(/Your care session is now ending/i)).toBeTruthy();
+    expect(eventSource).not.toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 700));
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 });

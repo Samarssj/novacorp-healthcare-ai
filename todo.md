@@ -106,3 +106,8 @@
 - [x] Preserve a successfully captured member ID when the associated mobile-number verification fails, and request only a corrected mobile number for the retry.
 - [x] Recognize courteous closing acknowledgements such as “ok thanks, have a great day” before care orchestration so they receive the farewell and secure sign-out.
 - [x] Add regression coverage for member-ID preservation after a failed mobile check and for mixed thanks/good-day closure language.
+- [x] Keep the verified care workspace and visible conversation stable after authentication without a page reload or state reset.
+- [x] Treat incomplete end-session language such as “and the session” as an end-session clarification instead of a care-orchestration request.
+- [x] Add regression coverage for stable verified-session handoff and partial end-session language.
+- [x] Add verified typed-chat end-session confirmation state so partial follow-up language does not reach care orchestration.
+- [x] Add regression coverage proving “and the session” ends a typed confirmed session without opening a coordinator stream.
