@@ -5,6 +5,7 @@ import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapabili
 import { emptySpeechRetryNotice, isEmptySpeechRecognitionError, nativeRecognitionLocale } from "@/lib/nativeVoiceRecognition";
 import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
 import { decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
+import { activeMicrophoneBars, normalizeMicrophoneLevel } from "../lib/microphoneLevel";
 import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff } from "lucide-react";
 import React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -85,6 +86,9 @@ export function VoiceConversationControls({
   const chunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const silenceFrameRef = useRef<number | null>(null);
+  const meterStreamRef = useRef<MediaStream | null>(null);
+  const meterContextRef = useRef<AudioContext | null>(null);
+  const meterFrameRef = useRef<number | null>(null);
   const inactivityTimerRef = useRef<number | null>(null);
   const captureModeRef = useRef<CaptureMode>("message");
   const nativeSubmittedRef = useRef(false);
@@ -103,6 +107,7 @@ export function VoiceConversationControls({
   const [notice, setNotice] = useState<string | null>(null);
   const [language, setLanguage] = useState<TranscriptionLanguage>("en");
   const [remainingSeconds, setRemainingSeconds] = useState(FALLBACK_RECORDING_SECONDS);
+  const [microphoneLevel, setMicrophoneLevel] = useState(0);
 
   const getRecognitionConstructor = () => {
     if (typeof window === "undefined") return undefined;
@@ -125,6 +130,40 @@ export function VoiceConversationControls({
     silenceFrameRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
+    setMicrophoneLevel(0);
+  };
+
+  const stopMicrophoneLevelMeter = () => {
+    if (meterFrameRef.current) window.cancelAnimationFrame(meterFrameRef.current);
+    meterFrameRef.current = null;
+    meterStreamRef.current?.getTracks().forEach(track => track.stop());
+    meterStreamRef.current = null;
+    meterContextRef.current?.close().catch(() => undefined);
+    meterContextRef.current = null;
+    setMicrophoneLevel(0);
+  };
+
+  const startNativeMicrophoneLevelMeter = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof window.AudioContext === "undefined") return;
+    stopMicrophoneLevelMeter();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      meterStreamRef.current = stream;
+      const context = new window.AudioContext();
+      meterContextRef.current = context;
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      const updateLevel = () => {
+        analyser.getByteTimeDomainData(samples);
+        setMicrophoneLevel(normalizeMicrophoneLevel(samples));
+        meterFrameRef.current = window.requestAnimationFrame(updateLevel);
+      };
+      meterFrameRef.current = window.requestAnimationFrame(updateLevel);
+    } catch {
+      setMicrophoneLevel(0);
+    }
   };
 
   const speakText = (text: string, onEnd?: () => void) => {
@@ -223,6 +262,7 @@ export function VoiceConversationControls({
     };
     recognition.onend = () => {
       setIsListening(false);
+      stopMicrophoneLevelMeter();
       if (!nativeSubmittedRef.current && mode === "message") {
         setNotice(emptySpeechRetryNotice());
         if (voiceSessionActiveRef.current) {
@@ -233,10 +273,12 @@ export function VoiceConversationControls({
     };
     recognitionRef.current = recognition;
     setIsListening(true);
+    void startNativeMicrophoneLevelMeter();
     try {
       recognition.start();
     } catch {
       setIsListening(false);
+      stopMicrophoneLevelMeter();
       setError("Nova could not start voice input. Please try again or type your response.");
     }
   };
@@ -285,6 +327,7 @@ export function VoiceConversationControls({
         const watchForSilence = () => {
           analyser.getByteTimeDomainData(samples);
           const averageAmplitude = samples.reduce((total, sample) => total + Math.abs(sample - 128), 0) / samples.length;
+          setMicrophoneLevel(normalizeMicrophoneLevel(samples));
           const now = Date.now();
           if (averageAmplitude > 2.6) lastSpeechAt = now;
           const hasNaturalPause = shouldAutoSubmitAfterPause({ elapsedMs: now - startedAt, silenceMs: lastSpeechAt === null ? 0 : now - lastSpeechAt, hasDetectedSpeech: lastSpeechAt !== null });
@@ -372,6 +415,7 @@ export function VoiceConversationControls({
       recorderRef.current?.stop();
       streamRef.current?.getTracks().forEach(track => track.stop());
       stopSilenceDetector();
+      stopMicrophoneLevelMeter();
       clearInactivityTimer();
       clearResumeListeningTimer();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
@@ -423,6 +467,7 @@ export function VoiceConversationControls({
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;
   const countdown = formatRecordingCountdown(remainingSeconds);
+  const activeMeterBars = activeMicrophoneBars(microphoneLevel);
   const support = capability === "native"
     ? { label: "Native voice input ready", detail: "Nova submits speech after you naturally pause.", className: "text-[#005a48]" }
     : capability === "fallback"
@@ -446,6 +491,9 @@ export function VoiceConversationControls({
       {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Listening</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
     </Button>
     {isVoiceSessionActive && <Button type="button" variant="ghost" size="sm" disabled={isRecording || isEndingSession} onClick={requestVoiceSessionEnd} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#b55239]"><PhoneOff className="mr-1.5 size-3" />End session</Button>}
+    {isRecording && <div role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={microphoneLevel} className="flex h-7 items-end gap-0.5 border-l border-[#005a48]/25 pl-2" title={`Microphone level ${microphoneLevel}%`}>
+      {activeMeterBars.map((isActive, index) => <span key={index} className={cn("w-1 rounded-sm transition-all duration-100", isActive ? "bg-[#005a48]" : "bg-[#005a48]/15")} style={{ height: `${7 + index * 2}px`, opacity: isActive ? 1 : 0.45 }} />)}
+    </div>}
     {isListening && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">Listening · Nova sends when you pause…</span>}
     {isRecordingFallback && <div className="flex basis-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7d2c1d]" role="status" aria-live="polite"><span>Recording · {countdown} left</span><span className="h-1.5 w-32 overflow-hidden bg-[#b55239]/15"><span className="block h-full bg-[#b55239] transition-[width] duration-200" style={{ width: `${(remainingSeconds / FALLBACK_RECORDING_SECONDS) * 100}%` }} /></span><span className="font-normal normal-case tracking-normal text-black/50">Nova sends automatically after a brief pause.</span></div>}
     {awaitingPresence && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">Nova is checking whether you need anything else. Say “no” to end your session, or “yes” to continue.</p>}

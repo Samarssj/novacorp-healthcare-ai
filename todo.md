@@ -75,3 +75,7 @@
 - [x] Verify the actual Home verified-workspace chat resumes the persisted hands-free session after authentication with a spoken care follow-up prompt.
 - [x] Add an end-to-end browser-runtime component lifecycle test covering real MemberAccess authentication into the verified Home workspace with native listening resumed, with preview verification of the entry controls.
 - [x] Resume persistent native listening after an empty-speech recognition error so a hands-free session does not silently stop.
+- [x] Add a real-time microphone-level animation while Nova is actively listening or recording.
+- [x] Keep visual listening feedback accurate across native recognition, fallback recording, pauses, and session transitions.
+- [x] Add microphone-level regression coverage and validate the dynamic listening feedback in the live interface.
+- [x] Perform an interaction-focused browser-runtime active-listening exercise confirming the microphone meter appears during listening and clears when a completed listening turn ends.

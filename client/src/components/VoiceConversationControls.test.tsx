@@ -97,6 +97,34 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(screen.queryByText(/Nova could not hear that/i)).toBeNull();
   });
 
+  it("shows an accessible microphone-level meter whenever Nova is actively listening", async () => {
+    const user = userEvent.setup();
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    expect(screen.queryByRole("meter", { name: /microphone level/i })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+
+    const meter = screen.getByRole("meter", { name: /microphone level/i });
+    expect(meter.getAttribute("aria-valuemin")).toBe("0");
+    expect(meter.getAttribute("aria-valuemax")).toBe("100");
+    expect(meter.children.length).toBe(8);
+  });
+
+  it("clears the microphone meter when a completed native listening turn ends", async () => {
+    const user = userEvent.setup();
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    expect(screen.getByRole("meter", { name: /microphone level/i })).toBeTruthy();
+    await act(async () => {
+      const recognition = FakeSpeechRecognition.latest;
+      recognition?.onresult?.({ results: [[{ transcript: "Hello" }]] });
+      recognition?.onend?.();
+    });
+
+    await waitFor(() => expect(screen.queryByRole("meter", { name: /microphone level/i })).toBeNull());
+  });
+
   it("speaks a visible reply only after the member starts a voice turn with Speak to Nova", async () => {
     const user = userEvent.setup();
     const onTranscript = vi.fn();
