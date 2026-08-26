@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapability";
+import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
 import { CircleAlert, CircleCheck, Loader2, Mic, Square, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -18,6 +19,15 @@ type Recognition = {
   onend: (() => void) | null;
 };
 type RecognitionConstructor = new () => Recognition;
+
+const languageOptions = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "hi", label: "Hindi" },
+] as const;
+type TranscriptionLanguage = (typeof languageOptions)[number]["value"];
 
 function plainText(markdown: string) {
   return markdown.replace(/\*\*/g, "").replace(/\[(.*?)\]\(.*?\)/g, "$1").replace(/[#*_>`]/g, " ").replace(/\s+/g, " ").trim();
@@ -57,6 +67,8 @@ export function VoiceConversationControls({
   const [isRecordingFallback, setIsRecordingFallback] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<TranscriptionLanguage>("en");
+  const [remainingSeconds, setRemainingSeconds] = useState(FALLBACK_RECORDING_SECONDS);
   const transcribeVoice = trpc.care.transcribeVoice.useMutation({
     onSuccess: result => {
       if (!result.text) {
@@ -86,6 +98,17 @@ export function VoiceConversationControls({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isRecordingFallback) return;
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const remaining = remainingRecordingSeconds(startedAt);
+      setRemainingSeconds(remaining);
+      if (remaining === 0) recorderRef.current?.stop();
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [isRecordingFallback]);
+
   const startNativeListening = () => {
     const VoiceRecognition = getRecognitionConstructor();
     if (!VoiceRecognition) return;
@@ -93,7 +116,7 @@ export function VoiceConversationControls({
     const recognition = new VoiceRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "en-US";
+    recognition.lang = language;
     recognition.onresult = event => {
       const transcript = Array.from(event.results).map(result => result[0]?.transcript ?? "").join(" ").trim();
       if (transcript) onTranscript(transcript);
@@ -127,12 +150,13 @@ export function VoiceConversationControls({
         if (blob.size > 8 * 1024 * 1024) return setError("The recording is too large. Keep voice messages under one minute.");
         try {
           const audioBase64 = await toBase64(blob);
-          transcribeVoice.mutate({ audioBase64, mimeType: (recorder.mimeType || "audio/webm") as "audio/webm" });
+          transcribeVoice.mutate({ audioBase64, mimeType: (recorder.mimeType || "audio/webm") as "audio/webm", language });
         } catch {
           setError("Nova could not prepare that recording. Please try again or type your message.");
         }
       };
       recorderRef.current = recorder;
+      setRemainingSeconds(FALLBACK_RECORDING_SECONDS);
       recorder.start();
       setIsRecordingFallback(true);
     } catch {
@@ -157,6 +181,7 @@ export function VoiceConversationControls({
 
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;
+  const countdown = formatRecordingCountdown(remainingSeconds);
   const support = capability === "native"
     ? { label: "Native voice input ready", detail: "Your browser can transcribe speech directly.", className: "text-[#005a48]" }
     : capability === "fallback"
@@ -170,13 +195,20 @@ export function VoiceConversationControls({
       {capability === "unavailable" ? <CircleAlert className="size-3.5" /> : <CircleCheck className="size-3.5" />} {support.label}
       <span className="font-normal normal-case tracking-normal text-black/50">· {support.detail}</span>
     </p>
+    <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-black/55">
+      Transcription language
+      <select value={language} onChange={event => setLanguage(event.target.value as TranscriptionLanguage)} disabled={isRecording || isTranscribing} className="h-7 border border-black/25 bg-transparent px-2 text-[11px] font-normal normal-case tracking-normal text-black outline-none focus:border-[#005a48]">
+        {languageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
     <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing} onClick={isRecording ? stopRecording : capability === "native" ? startNativeListening : startFallbackRecording} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
       {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Square className="mr-1.5 size-3" />Stop recording</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
     </Button>
     <Button type="button" variant="ghost" size="sm" disabled={!reply || isSpeaking} onClick={speakReply} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#005a48]">
       {isSpeaking ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : <Volume2 className="mr-1.5 size-3" />} Hear Nova
     </Button>
-    {isRecording && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">{isRecordingFallback ? "Recording…" : "Listening…"}</span>}
+    {isListening && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">Listening…</span>}
+    {isRecordingFallback && <div className="flex basis-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7d2c1d]" role="status" aria-live="polite"><span>Recording · {countdown} left</span><span className="h-1.5 w-32 overflow-hidden bg-[#b55239]/15"><span className="block h-full bg-[#b55239] transition-[width] duration-200" style={{ width: `${(remainingSeconds / FALLBACK_RECORDING_SECONDS) * 100}%` }} /></span><span className="font-normal normal-case tracking-normal text-black/50">Stops automatically at 0:00.</span></div>}
     {error && <p role="status" className="basis-full border-l-2 border-[#b55239] pl-3 text-xs leading-5 text-[#7d2c1d]">{error}</p>}
   </div>;
 }

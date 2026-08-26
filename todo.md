@@ -43,3 +43,7 @@
 - [x] Test fallback payload validation and transcript handoff safeguards.
 - [x] Add automated tests for native, fallback, and unavailable browser voice-capability states.
 - [x] Validate a successful server transcription fallback path using a controlled transcription adapter response.
+- [x] Add a visible countdown and automatic stop limit for fallback voice recording.
+- [x] Add a transcription-language selector and pass the selected language through the fallback route.
+- [x] Test countdown behavior, language validation, and language-aware fallback transcription requests.
+- [x] Add regression coverage rejecting unsupported transcription-language values in the fallback contract.
