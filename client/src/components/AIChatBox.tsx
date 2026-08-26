@@ -75,6 +75,9 @@ export type AIChatBoxProps = {
 
   /** Records that a member has explicitly initiated a hands-free voice session. */
   onVoiceSessionStart?: () => void;
+
+  /** Runs after Nova finishes speaking a terminal conversation announcement. */
+  onVoiceSpeechComplete?: (content: string) => void;
 };
 
 /**
@@ -141,6 +144,7 @@ export function AIChatBox({
   initialVoicePrompt,
   autoStartVoiceSession,
   onVoiceSessionStart,
+  onVoiceSpeechComplete,
 }: AIChatBoxProps) {
   const [input, setInput] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -336,6 +340,7 @@ export function AIChatBox({
         onTranscript={handleVoiceTranscript}
         reply={latestAssistantReply}
         onAssistantVoiceMessage={onVoiceAssistantMessage}
+        onSpeechComplete={onVoiceSpeechComplete}
         initialVoicePrompt={initialVoicePrompt}
         autoStartVoiceSession={autoStartVoiceSession}
         onVoiceSessionStart={onVoiceSessionStart}

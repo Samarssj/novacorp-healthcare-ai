@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 import { continueMemberConversation, executeMemberVerificationTool } from "./memberVerification";
-import { createPatientSession, PATIENT_SESSION_COOKIE } from "./session";
+import { createPatientSession, createVerificationAttemptToken, PATIENT_SESSION_COOKIE, VERIFICATION_ATTEMPTS_COOKIE } from "./session";
 
 describe("AI-led member verification conversation", () => {
   it("exposes the greeting-first conversation procedure through the care router", async () => {
@@ -28,6 +28,12 @@ describe("AI-led member verification conversation", () => {
     const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "NCG-48219" });
     expect(result.toolCall).toBeUndefined();
   });
+
+  it("preserves member-ID then mobile-number collection before each verification tool call", async () => {
+    const memberIdStep = await continueMemberConversation({ stage: "awaiting_member_id", message: "NCG-48219" });
+    expect(memberIdStep).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 0 });
+    expect(memberIdStep.toolCall).toBeUndefined();
+  });
 });
 
 describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification tool handoff", () => {
@@ -43,8 +49,18 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification to
 
   it("returns to member-ID collection after a failed verification tool call", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157" });
-    expect(result).toMatchObject({ stage: "awaiting_member_id" });
+    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
     expect(result.reply).toMatch(/couldn’t verify/i);
+  });
+
+  it("escalates to a live agent after the third failed paired verification", async () => {
+    const first = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: 0 });
+    const second = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: first.failedAttempts });
+    const third = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: second.failedAttempts });
+    expect(first).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
+    expect(second).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
+    expect(third).toMatchObject({ stage: "escalated", failedAttempts: 3 });
+    expect(third.reply).toMatch(/live agent/i);
   });
 
   it("uses the verified session for a positive patient-scoped workspace request", async () => {
@@ -72,5 +88,20 @@ describe("patient session ending", () => {
     await expect(caller.care.signOutPatient()).resolves.toEqual({ success: true });
     expect(cleared).toHaveLength(1);
     expect(cleared[0]).toMatchObject({ name: PATIENT_SESSION_COOKIE, options: { maxAge: -1 } });
+  });
+
+  it.runIf(Boolean(process.env.DATABASE_URL))("uses the signed failure counter to escalate even if a client resets its reported attempt count", async () => {
+    const cleared: Array<{ name: string; options: Record<string, unknown> }> = [];
+    const attemptsToken = await createVerificationAttemptToken(2);
+    const caller = appRouter.createCaller({
+      req: { protocol: "https", headers: { cookie: `${VERIFICATION_ATTEMPTS_COOKIE}=${attemptsToken}` } },
+      res: { clearCookie: (name: string, options: Record<string, unknown>) => cleared.push({ name, options }) },
+    } as TrpcContext);
+    const result = await caller.care.continueVerificationConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: 0 });
+    expect(result).toMatchObject({ stage: "escalated", failedAttempts: 3 });
+    expect(cleared).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: PATIENT_SESSION_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
+      expect.objectContaining({ name: VERIFICATION_ATTEMPTS_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
+    ]));
   });
 });

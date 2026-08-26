@@ -65,6 +65,7 @@ export function VoiceConversationControls({
   onTranscript,
   reply,
   onAssistantVoiceMessage,
+  onSpeechComplete,
   initialVoicePrompt,
   autoStartVoiceSession = false,
   onVoiceSessionStart,
@@ -74,6 +75,7 @@ export function VoiceConversationControls({
   onTranscript: (transcript: string) => void;
   reply?: string;
   onAssistantVoiceMessage?: (content: string) => void;
+  onSpeechComplete?: (content: string) => void;
   initialVoicePrompt?: string;
   autoStartVoiceSession?: boolean;
   onVoiceSessionStart?: () => void;
@@ -171,6 +173,7 @@ export function VoiceConversationControls({
   const speakText = (text: string, onEnd?: () => void) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       onEnd?.();
+      onSpeechComplete?.(text);
       return;
     }
     window.speechSynthesis.cancel();
@@ -179,10 +182,12 @@ export function VoiceConversationControls({
     utterance.onend = () => {
       setIsSpeaking(false);
       onEnd?.();
+      onSpeechComplete?.(text);
     };
     utterance.onerror = () => {
       setIsSpeaking(false);
       onEnd?.();
+      onSpeechComplete?.(text);
     };
     setIsSpeaking(true);
     window.speechSynthesis.speak(utterance);

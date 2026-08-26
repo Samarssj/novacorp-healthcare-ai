@@ -9,7 +9,7 @@ import { getPatientWorkspace, verifyPatientCredentials } from "./novacorp/careDa
 import { runCoordinator } from "./novacorp/coordinator";
 import { continueMemberConversation } from "./novacorp/memberVerification";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
-import { createPatientSession, PATIENT_SESSION_COOKIE, resolvePatientSession } from "./novacorp/session";
+import { createPatientSession, createVerificationAttemptToken, PATIENT_SESSION_COOKIE, resolvePatientSession, resolveVerificationAttemptToken, VERIFICATION_ATTEMPTS_COOKIE } from "./novacorp/session";
 import { executeApprovedTool } from "./novacorp/tools";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { runVoiceFallback, voiceFallbackInput } from "./novacorp/voiceFallback";
@@ -20,9 +20,10 @@ const memberVerificationSchema = z.object({
 }).strict();
 
 const memberConversationSchema = z.object({
-  stage: z.enum(["awaiting_member_id", "awaiting_phone", "verified"]),
+  stage: z.enum(["awaiting_member_id", "awaiting_phone", "verified", "escalated"]),
   message: z.string().trim().min(1).max(160),
   memberId: z.string().trim().min(5).max(64).optional(),
+  failedAttempts: z.number().int().min(0).max(2).optional(),
 }).strict();
 
 async function requireVerifiedPatient(cookieHeader: string | undefined) {
@@ -51,10 +52,20 @@ export const appRouter = router({
       reply: "Welcome to NovaCorp Health. I’m Nova, your care assistant. To open your private workspace, please enter your member ID.",
     })),
     continueVerificationConversation: publicProcedure.input(memberConversationSchema).mutation(async ({ input, ctx }) => {
-      const result = await continueMemberConversation(input);
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      const previousAttempts = await resolveVerificationAttemptToken(parse(ctx.req.headers.cookie ?? "")[VERIFICATION_ATTEMPTS_COOKIE]);
+      const result = await continueMemberConversation({ ...input, failedAttempts: previousAttempts });
       if (result.stage === "verified" && result.patient) {
         const token = await createPatientSession(result.patient.id);
-        ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
+        ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
+        ctx.res.clearCookie(VERIFICATION_ATTEMPTS_COOKIE, { ...cookieOptions, maxAge: -1 });
+      }
+      if (result.stage === "escalated") {
+        ctx.res.clearCookie(PATIENT_SESSION_COOKIE, { ...cookieOptions, maxAge: -1 });
+        ctx.res.clearCookie(VERIFICATION_ATTEMPTS_COOKIE, { ...cookieOptions, maxAge: -1 });
+      } else if (result.failedAttempts > 0) {
+        const token = await createVerificationAttemptToken(result.failedAttempts);
+        ctx.res.cookie(VERIFICATION_ATTEMPTS_COOKIE, token, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
       }
       return result;
     }),

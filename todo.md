@@ -85,3 +85,8 @@
 - [x] Add timer lifecycle regression coverage and validate the corrected inactivity interaction.
 - [x] Verify that the ten-second check-in is armed only after a listening turn ends without speech, not while Nova is speaking or listening after a reply.
 - [x] Add reply-continuation regression coverage proving no inactivity prompt appears while Nova has reopened native listening after a reply.
+- [x] Track failed member-verification attempts and, after three failures, tell the member a live agent handoff is being arranged before securely ending the patient session.
+- [x] Preserve mandatory dual verification: collect member ID first, then mobile number, and invoke the typed verification tool only after both values are present.
+- [x] Verify the authorized demonstration member credential pairs from seeded project data and provide safe test guidance.
+- [x] Add regression coverage for first, second, and third failed verification attempts, live-agent escalation, and session termination.
+- [x] Keep failed verification count in a short-lived signed stateless cookie so three-attempt escalation cannot be bypassed by client-side state resets.
