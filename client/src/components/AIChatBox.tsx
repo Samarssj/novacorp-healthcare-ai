@@ -155,6 +155,7 @@ export function AIChatBox({
   // Filter out system messages
   const displayMessages = messages.filter((msg) => msg.role !== "system");
   const latestAssistantReply = [...displayMessages].reverse().find((message) => message.role === "assistant")?.content;
+  const latestAssistantReplyInstance = messages.reduce((latest, message, index) => message.role === "assistant" ? index : latest, -1);
 
   // Calculate min-height for last assistant message to push user message to top
   const [minHeightForLastMessage, setMinHeightForLastMessage] = useState(0);
@@ -339,6 +340,7 @@ export function AIChatBox({
       <VoiceConversationControls
         onTranscript={handleVoiceTranscript}
         reply={latestAssistantReply}
+        replyInstance={latestAssistantReplyInstance}
         onAssistantVoiceMessage={onVoiceAssistantMessage}
         onSpeechComplete={onVoiceSpeechComplete}
         initialVoicePrompt={initialVoicePrompt}

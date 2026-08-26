@@ -29,6 +29,12 @@ describe("AI-led member verification conversation", () => {
     expect(result.reply).toMatch(/not a mobile number/i);
   });
 
+  it("ends a pre-verification conversation courteously when the member says they do not want anything", async () => {
+    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "I don't want anything", failedAttempts: 2 });
+    expect(result).toMatchObject({ stage: "ended", failedAttempts: 0 });
+    expect(result.reply).toMatch(/end this verification session/i);
+  });
+
   it("processes a voice transcript through the same verification state transition as typed text", async () => {
     const voiceTranscript = "NCG-48219";
     const result = await continueMemberConversation({ stage: "awaiting_member_id", message: voiceTranscript });
@@ -114,8 +120,10 @@ describe("patient session ending", () => {
       res: { clearCookie: (name: string, options: Record<string, unknown>) => cleared.push({ name, options }) },
     } as TrpcContext);
     await expect(caller.care.signOutPatient()).resolves.toEqual({ success: true });
-    expect(cleared).toHaveLength(1);
-    expect(cleared[0]).toMatchObject({ name: PATIENT_SESSION_COOKIE, options: { maxAge: -1 } });
+    expect(cleared).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: PATIENT_SESSION_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
+      expect.objectContaining({ name: VERIFICATION_ATTEMPTS_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
+    ]));
   });
 
   it.runIf(Boolean(process.env.DATABASE_URL))("uses the signed failure counter to escalate even if a client resets its reported attempt count", async () => {

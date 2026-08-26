@@ -64,6 +64,7 @@ function setPersistedHandsFreeSession(active: boolean) {
 export function VoiceConversationControls({
   onTranscript,
   reply,
+  replyInstance,
   onAssistantVoiceMessage,
   onSpeechComplete,
   initialVoicePrompt,
@@ -74,6 +75,7 @@ export function VoiceConversationControls({
 }: {
   onTranscript: (transcript: string) => void;
   reply?: string;
+  replyInstance?: number;
   onAssistantVoiceMessage?: (content: string) => void;
   onSpeechComplete?: (content: string) => void;
   initialVoicePrompt?: string;
@@ -96,6 +98,7 @@ export function VoiceConversationControls({
   const nativeSubmittedRef = useRef(false);
   const shouldSpeakNextReplyRef = useRef(false);
   const lastVoicePlayedReplyRef = useRef<string | undefined>(undefined);
+  const lastVoicePlayedReplyInstanceRef = useRef<number | undefined>(undefined);
   const hasStartedOpeningPromptRef = useRef(false);
   const voiceSessionActiveRef = useRef(false);
   const resumeListeningTimerRef = useRef<number | null>(null);
@@ -468,9 +471,11 @@ export function VoiceConversationControls({
   }, [isRecordingFallback]);
 
   useEffect(() => {
-    if (!reply || !shouldSpeakNextReplyRef.current || lastVoicePlayedReplyRef.current === reply) return;
+    const isDuplicateReply = replyInstance === undefined ? lastVoicePlayedReplyRef.current === reply : lastVoicePlayedReplyInstanceRef.current === replyInstance;
+    if (!reply || !shouldSpeakNextReplyRef.current || isDuplicateReply) return;
     shouldSpeakNextReplyRef.current = false;
     lastVoicePlayedReplyRef.current = reply;
+    lastVoicePlayedReplyInstanceRef.current = replyInstance;
     speakText(reply, () => {
       if (voiceSessionActiveRef.current && getRecognitionConstructor()) {
         clearResumeListeningTimer();
@@ -480,7 +485,7 @@ export function VoiceConversationControls({
         }, 250);
       }
     });
-  }, [reply]);
+  }, [reply, replyInstance]);
 
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;

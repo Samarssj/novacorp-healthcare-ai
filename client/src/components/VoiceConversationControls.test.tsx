@@ -179,6 +179,32 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(screen.queryByText(/Nova is checking whether you need anything else/i)).toBeNull();
   });
 
+  it("reopens native listening when an identical verification retry prompt arrives as a new reply instance", async () => {
+    const user = userEvent.setup();
+    const onTranscript = vi.fn();
+    const retryReply = "I need the member ID from your NovaCorp Health card to continue.";
+    const { rerender } = render(<VoiceConversationControls onTranscript={onTranscript} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    const firstListeningTurn = FakeSpeechRecognition.latest;
+    await act(async () => {
+      firstListeningTurn?.onresult?.({ results: [[{ transcript: "wrong member detail" }]] });
+      firstListeningTurn?.onend?.();
+    });
+    rerender(<VoiceConversationControls onTranscript={onTranscript} reply={retryReply} replyInstance={1} />);
+    await waitFor(() => expect(FakeSpeechRecognition.latest).not.toBe(firstListeningTurn));
+
+    const secondListeningTurn = FakeSpeechRecognition.latest;
+    await act(async () => {
+      secondListeningTurn?.onresult?.({ results: [[{ transcript: "wrong member detail" }]] });
+      secondListeningTurn?.onend?.();
+    });
+    rerender(<VoiceConversationControls onTranscript={onTranscript} reply={retryReply} replyInstance={2} />);
+
+    await waitFor(() => expect(FakeSpeechRecognition.latest).not.toBe(secondListeningTurn));
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(2);
+  });
+
   it("speaks Nova's verification greeting immediately when Speak to Nova begins a hands-free session", async () => {
     const user = userEvent.setup();
     const onAssistantVoiceMessage = vi.fn();

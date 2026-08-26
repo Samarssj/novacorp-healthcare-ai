@@ -10,7 +10,7 @@ export const memberVerificationInputs = {
 
 export const MAX_MEMBER_VERIFICATION_ATTEMPTS = 3;
 
-export type MemberConversationStage = "awaiting_member_id" | "awaiting_phone" | "verified" | "escalated";
+export type MemberConversationStage = "awaiting_member_id" | "awaiting_phone" | "verified" | "escalated" | "ended";
 
 export type MemberConversationResult = {
   stage: MemberConversationStage;
@@ -21,6 +21,11 @@ export type MemberConversationResult = {
   toolCall?: "verify_member";
 };
 
+function requestsVerificationExit(message: string) {
+  const normalized = message.toLowerCase().replace(/[^a-z\s']/g, " ").replace(/\s+/g, " ").trim();
+  return /^(?:i )?(?:do not|don't|dont) (?:want|need|have) (?:anything|anthing|anyting)(?: else| more)?(?: help)?|nothing(?: else)?|no thanks|(?:please )?end(?: the)? session|end|goodbye|bye|that's all|thats all|and the session$/.test(normalized);
+}
+
 /**
  * The AI-led access flow is intentionally deterministic around credentials. It
  * asks for one credential at a time, then invokes the typed verification tool.
@@ -28,6 +33,9 @@ export type MemberConversationResult = {
  */
 export async function continueMemberConversation(input: { stage: MemberConversationStage; message: string; memberId?: string; failedAttempts?: number }): Promise<MemberConversationResult> {
   const failedAttempts = Math.max(0, Math.min(input.failedAttempts ?? 0, MAX_MEMBER_VERIFICATION_ATTEMPTS - 1));
+  if (requestsVerificationExit(input.message)) {
+    return { stage: "ended", failedAttempts: 0, reply: "Understood. I’ll end this verification session now. You can return whenever you need help." };
+  }
   if (input.stage === "awaiting_member_id") {
     const memberId = normalizeMemberId(input.message);
     if (!isValidMemberId(memberId)) {
@@ -69,6 +77,10 @@ export async function continueMemberConversation(input: { stage: MemberConversat
 
   if (input.stage === "escalated") {
     return { stage: "escalated", failedAttempts: MAX_MEMBER_VERIFICATION_ATTEMPTS, reply: "Your secure verification session has ended. A live agent can help with your next steps." };
+  }
+
+  if (input.stage === "ended") {
+    return { stage: "ended", failedAttempts: 0, reply: "This verification session has ended. You can return whenever you need help." };
   }
 
   return { stage: "verified", failedAttempts: 0, reply: "Your care workspace is already open." };

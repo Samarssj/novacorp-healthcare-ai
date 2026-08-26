@@ -20,7 +20,7 @@ const memberVerificationSchema = z.object({
 }).strict();
 
 const memberConversationSchema = z.object({
-  stage: z.enum(["awaiting_member_id", "awaiting_phone", "verified", "escalated"]),
+  stage: z.enum(["awaiting_member_id", "awaiting_phone", "verified", "escalated", "ended"]),
   message: z.string().trim().min(1).max(160),
   memberId: z.string().trim().min(5).max(64).optional(),
   failedAttempts: z.number().int().min(0).max(2).optional(),
@@ -60,7 +60,7 @@ export const appRouter = router({
         ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
         ctx.res.clearCookie(VERIFICATION_ATTEMPTS_COOKIE, { ...cookieOptions, maxAge: -1 });
       }
-      if (result.stage === "escalated") {
+      if (result.stage === "escalated" || result.stage === "ended") {
         ctx.res.clearCookie(PATIENT_SESSION_COOKIE, { ...cookieOptions, maxAge: -1 });
         ctx.res.clearCookie(VERIFICATION_ATTEMPTS_COOKIE, { ...cookieOptions, maxAge: -1 });
       } else if (result.failedAttempts > 0) {
@@ -82,7 +82,9 @@ export const appRouter = router({
       return { patient: { name: patient.name, memberId: patient.memberId, plan: patient.plan } };
     }),
     signOutPatient: publicProcedure.mutation(({ ctx }) => {
-      ctx.res.clearCookie(PATIENT_SESSION_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+      const cookieOptions = { ...getSessionCookieOptions(ctx.req), maxAge: -1 };
+      ctx.res.clearCookie(PATIENT_SESSION_COOKIE, cookieOptions);
+      ctx.res.clearCookie(VERIFICATION_ATTEMPTS_COOKIE, cookieOptions);
       return { success: true } as const;
     }),
     getWorkspace: publicProcedure.query(async ({ ctx }) => {

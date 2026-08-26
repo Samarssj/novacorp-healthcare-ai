@@ -114,3 +114,8 @@
 - [x] Recognize natural no-further-help variations such as “I don’t have anything else” and end the session with the existing farewell flow.
 - [x] Detect a clear request to book the currently displayed appointment slot and open the existing explicit booking confirmation rather than repeating availability.
 - [x] Add regression coverage for fuzzy closure wording and offered-slot booking handoff while retaining explicit booking submission confirmation.
+- [x] Recognize courteous requests to stop during member verification and end only the verification voice session with a clear farewell.
+- [x] Resume native hands-free listening after invalid verification responses without requiring another Speak to Nova action.
+- [x] Add regression coverage for verification-stage exits and continuous native listening through repeated invalid retry prompts.
+- [x] Preserve the spoken courteous verification-exit farewell until completion, then clear the persisted hands-free session state.
+- [x] Add a browser-runtime regression proving a voice-triggered verification exit completes its farewell and terminates hands-free state cleanly.
