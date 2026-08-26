@@ -5,6 +5,7 @@ import { VoiceConversationControls } from "@/components/VoiceConversationControl
 import { handOffVoiceTranscript } from "@/lib/voiceTranscript";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, User, Sparkles } from "lucide-react";
+import React from "react";
 import { useState, useEffect, useRef } from "react";
 import { Streamdown } from "streamdown";
 
@@ -59,6 +60,12 @@ export type AIChatBoxProps = {
    * Click to send directly
    */
   suggestedPrompts?: string[];
+
+  /**
+   * Adds an assistant message when a voice-only prompt is announced so the
+   * spoken exchange remains auditable in the visible chat transcript.
+   */
+  onVoiceAssistantMessage?: (content: string) => void;
 };
 
 /**
@@ -121,6 +128,7 @@ export function AIChatBox({
   height = "600px",
   emptyStateMessage = "Start a conversation with AI",
   suggestedPrompts,
+  onVoiceAssistantMessage,
 }: AIChatBoxProps) {
   const [input, setInput] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -315,6 +323,7 @@ export function AIChatBox({
       <VoiceConversationControls
         onTranscript={handleVoiceTranscript}
         reply={latestAssistantReply}
+        onAssistantVoiceMessage={onVoiceAssistantMessage}
         disabled={isLoading}
         className="mx-4 mt-2"
       />

@@ -33,12 +33,31 @@ class FakeSpeechRecognition implements RecognitionHandlers {
   stop() { this.onend?.(); }
 }
 
+class FakeSpeechSynthesisUtterance {
+  onstart: (() => void) | null = null;
+  onend: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  rate = 1;
+  constructor(public text: string) {}
+}
+
 describe("VoiceConversationControls native silence recovery", () => {
   beforeEach(() => {
     const browser = window as typeof window & { SpeechRecognition?: typeof FakeSpeechRecognition; webkitSpeechRecognition?: typeof FakeSpeechRecognition };
     browser.SpeechRecognition = FakeSpeechRecognition;
     browser.webkitSpeechRecognition = undefined;
     FakeSpeechRecognition.latest = null;
+    Object.assign(window, { SpeechSynthesisUtterance: FakeSpeechSynthesisUtterance });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel: vi.fn(),
+        speak: vi.fn((utterance: FakeSpeechSynthesisUtterance) => {
+          utterance.onstart?.();
+          utterance.onend?.();
+        }),
+      },
+    });
   });
 
   afterEach(() => {
@@ -62,5 +81,41 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(screen.getByText(/Nova is ready when you are/i)).toBeTruthy();
     expect(screen.queryByText(/Nova could not hear that/i)).toBeNull();
     expect(screen.queryByText(/Microphone permission is required/i)).toBeNull();
+  });
+
+  it("speaks a visible reply only after the member starts a voice turn with Speak to Nova", async () => {
+    const user = userEvent.setup();
+    const onTranscript = vi.fn();
+    const { rerender } = render(<VoiceConversationControls onTranscript={onTranscript} />);
+
+    expect(window.speechSynthesis.speak).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    await act(async () => {
+      FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "Hi" }]] });
+    });
+    expect(onTranscript).toHaveBeenCalledWith("Hi");
+
+    rerender(<VoiceConversationControls onTranscript={onTranscript} reply="Welcome to NovaCorp Health. Please share your member ID." />);
+    await act(async () => undefined);
+
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
+    expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Welcome to NovaCorp Health. Please share your member ID." }));
+    expect(screen.queryByRole("button", { name: /hear nova/i })).toBeNull();
+  });
+
+  it("reports Nova's spoken session-end confirmation prompt to the visible chat callback", async () => {
+    const user = userEvent.setup();
+    const onAssistantVoiceMessage = vi.fn();
+    render(<VoiceConversationControls onTranscript={vi.fn()} onAssistantVoiceMessage={onAssistantVoiceMessage} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    await act(async () => {
+      const recognition = FakeSpeechRecognition.latest;
+      recognition?.onresult?.({ results: [[{ transcript: "Hello" }]] });
+      recognition?.onend?.();
+    });
+    await user.click(screen.getByRole("button", { name: /end session/i }));
+
+    expect(onAssistantVoiceMessage).toHaveBeenCalledWith(expect.stringMatching(/Would you like to end your care session/i));
   });
 });

@@ -62,3 +62,10 @@
 - [x] Add component-level regression coverage for native no-speech and aborted recognition events, confirming the retry notice appears without a blocking error.
 - [x] Re-verify the live voice control after the native empty-speech recovery fix.
 - [x] Verify the native recognition no-speech recovery path with browser-runtime component simulations for no-speech, aborted, and ended-without-transcript events; each shows a retry notice without a blocking error.
+- [x] Keep every member voice transcript and Nova spoken prompt or reply visible in the chat transcript during a voice session.
+- [x] Start Nova's member-access greeting only after the member says or types “hi,” rather than showing it immediately.
+- [x] Ensure Nova speaks a greeting or reply only after the member explicitly selects Speak to Nova.
+- [x] Add regression coverage and live validation for the visible voice-chat and explicit-playback interaction.
+- [x] Remove separate reply-playback paths so Nova speaks replies only within the member-initiated Speak to Nova voice flow.
+- [x] Add browser-runtime conversation coverage showing a member voice turn, visible assistant reply, and gated playback behavior end to end.
+- [x] Add an integrated browser-runtime test for Speak to Nova, real transcript handoff, visible assistant reply, and voice-triggered playback without a separate replay control.

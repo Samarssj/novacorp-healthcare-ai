@@ -5,7 +5,7 @@ import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapabili
 import { emptySpeechRetryNotice, isEmptySpeechRecognitionError, nativeRecognitionLocale } from "@/lib/nativeVoiceRecognition";
 import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
 import { decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
-import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff, Volume2 } from "lucide-react";
+import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff } from "lucide-react";
 import React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -54,11 +54,13 @@ function preferredMimeType() {
 export function VoiceConversationControls({
   onTranscript,
   reply,
+  onAssistantVoiceMessage,
   disabled = false,
   className,
 }: {
   onTranscript: (transcript: string) => void;
   reply?: string;
+  onAssistantVoiceMessage?: (content: string) => void;
   disabled?: boolean;
   className?: string;
 }) {
@@ -71,10 +73,11 @@ export function VoiceConversationControls({
   const inactivityTimerRef = useRef<number | null>(null);
   const captureModeRef = useRef<CaptureMode>("message");
   const nativeSubmittedRef = useRef(false);
+  const shouldSpeakNextReplyRef = useRef(false);
+  const lastVoicePlayedReplyRef = useRef<string | undefined>(undefined);
   const [capability, setCapability] = useState<VoiceCapability>("checking");
   const [isListening, setIsListening] = useState(false);
   const [isRecordingFallback, setIsRecordingFallback] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceSessionActive, setIsVoiceSessionActive] = useState(false);
   const [awaitingPresence, setAwaitingPresence] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
@@ -109,13 +112,10 @@ export function VoiceConversationControls({
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(plainText(text));
     utterance.rate = 0.96;
-    utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => {
-      setIsSpeaking(false);
       onEnd?.();
     };
     utterance.onerror = () => {
-      setIsSpeaking(false);
       onEnd?.();
     };
     window.speechSynthesis.speak(utterance);
@@ -133,7 +133,9 @@ export function VoiceConversationControls({
     clearInactivityTimer();
     setIsEndingSession(true);
     setAwaitingPresence(false);
-    speakText("Thank you for contacting NovaCorp Health. Your care session is now ending. Goodbye.", () => {
+    const farewell = "Thank you for contacting NovaCorp Health. Your care session is now ending. Goodbye.";
+    onAssistantVoiceMessage?.(farewell);
+    speakText(farewell, () => {
       window.setTimeout(() => signOutPatient.mutate(), 350);
     });
   };
@@ -147,10 +149,13 @@ export function VoiceConversationControls({
         setAwaitingPresence(false);
         captureModeRef.current = "message";
         setIsVoiceSessionActive(true);
-        speakText("I’m still here. What else can I help you with?");
+        const continuation = "I’m still here. What else can I help you with?";
+        onAssistantVoiceMessage?.(continuation);
+        speakText(continuation);
       }
       return;
     }
+    shouldSpeakNextReplyRef.current = true;
     setIsVoiceSessionActive(true);
     onTranscript(transcript);
   };
@@ -265,10 +270,12 @@ export function VoiceConversationControls({
     setAwaitingPresence(true);
     captureModeRef.current = "presence";
     const prompt = "Are you still there? Say yes to continue, or say no if you do not need anything else and I will end your session.";
+    const spokenPrompt = capability === "native" ? prompt : `${prompt} Use Record for Nova to reply.`;
+    onAssistantVoiceMessage?.(spokenPrompt);
     if (capability === "native") {
       speakText(prompt, () => window.setTimeout(() => startNativeListening("presence"), 250));
     } else {
-      speakText(`${prompt} Use Record for Nova to reply.`);
+      speakText(spokenPrompt);
     }
   };
 
@@ -277,10 +284,12 @@ export function VoiceConversationControls({
     setAwaitingPresence(true);
     captureModeRef.current = "end-confirmation";
     const prompt = "Would you like to end your care session? Say no to confirm ending the session, or say yes to continue.";
+    const spokenPrompt = capability === "native" ? prompt : `${prompt} Use Record for Nova to reply.`;
+    onAssistantVoiceMessage?.(spokenPrompt);
     if (capability === "native") {
       speakText(prompt, () => window.setTimeout(() => startNativeListening("end-confirmation"), 250));
     } else {
-      speakText(`${prompt} Use Record for Nova to reply.`);
+      speakText(spokenPrompt);
     }
   };
 
@@ -321,6 +330,13 @@ export function VoiceConversationControls({
   }, [isRecordingFallback]);
 
   useEffect(() => {
+    if (!reply || !shouldSpeakNextReplyRef.current || lastVoicePlayedReplyRef.current === reply) return;
+    shouldSpeakNextReplyRef.current = false;
+    lastVoicePlayedReplyRef.current = reply;
+    speakText(reply);
+  }, [reply]);
+
+  useEffect(() => {
     clearInactivityTimer();
     if (!isVoiceSessionActive || !reply || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence || isEndingSession) return;
     inactivityTimerRef.current = window.setTimeout(() => {
@@ -329,7 +345,6 @@ export function VoiceConversationControls({
     return clearInactivityTimer;
   }, [reply, isVoiceSessionActive, isListening, isRecordingFallback, transcribeVoice.isPending, awaitingPresence, isEndingSession]);
 
-  const speakReply = () => reply && speakText(reply);
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;
   const countdown = formatRecordingCountdown(remainingSeconds);
@@ -354,9 +369,6 @@ export function VoiceConversationControls({
     </label>
     <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing || isRecording || isEndingSession} onClick={() => capability === "native" ? startNativeListening() : startFallbackRecording()} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
       {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Listening</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
-    </Button>
-    <Button type="button" variant="ghost" size="sm" disabled={!reply || isSpeaking || isEndingSession} onClick={speakReply} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#005a48]">
-      {isSpeaking ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : <Volume2 className="mr-1.5 size-3" />} Hear Nova
     </Button>
     {isVoiceSessionActive && <Button type="button" variant="ghost" size="sm" disabled={isRecording || isEndingSession} onClick={requestVoiceSessionEnd} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#b55239]"><PhoneOff className="mr-1.5 size-3" />End session</Button>}
     {isListening && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">Listening · Nova sends when you pause…</span>}
