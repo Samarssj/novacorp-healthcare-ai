@@ -2,9 +2,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapability";
+import { emptySpeechRetryNotice, isEmptySpeechRecognitionError, nativeRecognitionLocale } from "@/lib/nativeVoiceRecognition";
 import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
 import { decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
 import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff, Volume2 } from "lucide-react";
+import React from "react";
 import { useEffect, useRef, useState } from "react";
 
 type RecognitionEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
@@ -77,6 +79,7 @@ export function VoiceConversationControls({
   const [awaitingPresence, setAwaitingPresence] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [language, setLanguage] = useState<TranscriptionLanguage>("en");
   const [remainingSeconds, setRemainingSeconds] = useState(FALLBACK_RECORDING_SECONDS);
 
@@ -159,10 +162,11 @@ export function VoiceConversationControls({
     captureModeRef.current = mode;
     nativeSubmittedRef.current = false;
     setError(null);
+    setNotice(null);
     const recognition = new VoiceRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = language;
+    recognition.lang = nativeRecognitionLocale(language);
     recognition.onresult = event => {
       const transcript = Array.from(event.results).map(result => result[0]?.transcript ?? "").join(" ").trim();
       if (transcript && !nativeSubmittedRef.current) {
@@ -172,16 +176,27 @@ export function VoiceConversationControls({
     };
     recognition.onerror = event => {
       setIsListening(false);
+      if (isEmptySpeechRecognitionError(event.error)) {
+        setAwaitingPresence(false);
+        captureModeRef.current = "message";
+        setNotice(emptySpeechRetryNotice());
+        return;
+      }
       setAwaitingPresence(false);
       setError(event.error === "not-allowed" ? "Microphone permission is required to use voice input." : "Nova could not hear that. Please try again or type your response.");
     };
     recognition.onend = () => {
       setIsListening(false);
-      if (!nativeSubmittedRef.current && mode === "message") setError("Nova did not detect speech. Please speak naturally and pause when you are finished.");
+      if (!nativeSubmittedRef.current && mode === "message") setNotice(emptySpeechRetryNotice());
     };
     recognitionRef.current = recognition;
     setIsListening(true);
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      setIsListening(false);
+      setError("Nova could not start voice input. Please try again or type your response.");
+    }
   };
 
   const startFallbackRecording = async (mode: CaptureMode = "message") => {
@@ -348,6 +363,7 @@ export function VoiceConversationControls({
     {isRecordingFallback && <div className="flex basis-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7d2c1d]" role="status" aria-live="polite"><span>Recording · {countdown} left</span><span className="h-1.5 w-32 overflow-hidden bg-[#b55239]/15"><span className="block h-full bg-[#b55239] transition-[width] duration-200" style={{ width: `${(remainingSeconds / FALLBACK_RECORDING_SECONDS) * 100}%` }} /></span><span className="font-normal normal-case tracking-normal text-black/50">Nova sends automatically after a brief pause.</span></div>}
     {awaitingPresence && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">Nova is checking whether you need anything else. Say “no” to end your session, or “yes” to continue.</p>}
     {isEndingSession && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">Nova is ending your session. Goodbye.</p>}
+    {notice && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">{notice}</p>}
     {error && <p role="status" className="basis-full border-l-2 border-[#b55239] pl-3 text-xs leading-5 text-[#7d2c1d]">{error}</p>}
   </div>;
 }

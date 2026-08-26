@@ -57,3 +57,8 @@
 - [x] Test inactivity prompts, affirmative continuation, and confirmed voice-session ending behavior.
 - [x] Add deterministic state tests for automatic speech-pause submission, five-second inactivity prompts, affirmative continuation, and confirmed ending behavior.
 - [x] Add regression coverage rejecting unsupported transcription-language values in the fallback contract.
+- [x] Handle native voice-recognition empty-speech results gracefully and provide a clear retry path without treating them as a blocking voice error.
+- [x] Add regression coverage for empty native recognition results and validate the corrected voice interaction.
+- [x] Add component-level regression coverage for native no-speech and aborted recognition events, confirming the retry notice appears without a blocking error.
+- [x] Re-verify the live voice control after the native empty-speech recovery fix.
+- [x] Verify the native recognition no-speech recovery path with browser-runtime component simulations for no-speech, aborted, and ended-without-transcript events; each shows a retry notice without a blocking error.
