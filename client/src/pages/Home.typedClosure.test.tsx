@@ -27,7 +27,7 @@ vi.mock("@/lib/trpc", () => ({
 vi.mock("@/components/AIChatBox", () => ({
   AIChatBox: ({ onSendMessage, messages, placeholder }: { onSendMessage: (message: string) => void; messages: Array<{ content: string }>; placeholder?: string }) => <div>
     {placeholder?.includes("benefits") ? <>
-      <button onClick={() => onSendMessage("Have a good day")}>Send courteous closure</button>
+      <button onClick={() => onSendMessage("Ok thanks, have a great day")}>Send courteous closure</button>
       <button onClick={() => onSendMessage("Help me book an appointment.")}>Send booking request</button>
     </> : <button onClick={() => onSendMessage("NCG-48219")}>Verify member</button>}
     {messages.map((message, index) => <p key={index}>{message.content}</p>)}

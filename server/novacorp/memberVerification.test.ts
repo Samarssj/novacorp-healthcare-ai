@@ -73,19 +73,20 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification to
     expect(result).toMatchObject({ stage: "verified", memberId: "NCG-48219", patient: { id: "patient-avery" } });
   });
 
-  it("returns to member-ID collection after a failed verification tool call", async () => {
+  it("retains the captured member ID and requests only a corrected mobile number after a failed verification tool call", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157" });
-    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
+    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 1 });
     expect(result.reply).toMatch(/couldn’t verify/i);
-    expect(result.reply).toMatch(/then I will ask for the associated mobile number/i);
+    expect(result.reply).toMatch(/mobile number/i);
+    expect(result.reply).not.toMatch(/re-enter your member id/i);
   });
 
   it("escalates to a live agent after the third failed paired verification", async () => {
     const first = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: 0 });
     const second = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: first.failedAttempts });
     const third = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: second.failedAttempts });
-    expect(first).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
-    expect(second).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
+    expect(first).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 1 });
+    expect(second).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 2 });
     expect(third).toMatchObject({ stage: "escalated", failedAttempts: 3 });
     expect(third.reply).toMatch(/live agent/i);
   });

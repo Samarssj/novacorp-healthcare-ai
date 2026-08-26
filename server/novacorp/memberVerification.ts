@@ -59,9 +59,10 @@ export async function continueMemberConversation(input: { stage: MemberConversat
         };
       }
       return {
-        stage: "awaiting_member_id",
+        stage: "awaiting_phone",
         failedAttempts: nextFailedAttempts,
-        reply: `I couldn’t verify those details. Please re-enter your member ID to try again, then I will ask for the associated mobile number. You have ${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts} attempt${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts === 1 ? "" : "s"} remaining before I connect you to a live agent.`,
+        memberId: input.memberId,
+        reply: `I couldn’t verify that mobile number for the member ID already provided. Please re-enter the associated mobile number. You have ${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts} attempt${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts === 1 ? "" : "s"} remaining before I connect you to a live agent.`,
       };
     }
   }

@@ -103,3 +103,6 @@
 - [x] Make a clear “yes” confirm end-session and a clear “no” continue-session when Nova asks whether to end care.
 - [x] Interpret courteous closure language contextually while keeping member verification, booking, cancellation, and sign-out guarded by their existing explicit controls.
 - [x] Add regression coverage for affirmative end confirmation, negative continuation, ambiguous responses, and guarded care actions.
+- [x] Preserve a successfully captured member ID when the associated mobile-number verification fails, and request only a corrected mobile number for the retry.
+- [x] Recognize courteous closing acknowledgements such as “ok thanks, have a great day” before care orchestration so they receive the farewell and secure sign-out.
+- [x] Add regression coverage for member-ID preservation after a failed mobile check and for mixed thanks/good-day closure language.

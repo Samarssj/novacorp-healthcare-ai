@@ -12,6 +12,7 @@ describe("voice session completion", () => {
     expect(confirmsNoFurtherHelp("That's all")).toBe(true);
     expect(confirmsNoFurtherHelp("I don't need anything else")).toBe(true);
     expect(confirmsNoFurtherHelp("Have a good day")).toBe(true);
+    expect(confirmsNoFurtherHelp("Ok thanks, have a great day")).toBe(true);
   });
 
   it("does not end a session on an affirmative continuation", () => {
