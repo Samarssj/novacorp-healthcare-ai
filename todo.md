@@ -47,4 +47,13 @@
 - [x] Add a transcription-language selector and pass the selected language through the fallback route.
 - [x] Test countdown behavior, language validation, and language-aware fallback transcription requests.
 - [x] Verify and explicitly push the latest project checkpoint to the configured GitHub branch.
+- [x] Refresh README technology badges with a more cohesive visual icon treatment.
+- [x] Audit and correct any remaining project commit attribution so GitHub shows only the user's identity.
+- [x] Detect natural speech completion and automatically submit native-recognition transcripts without a manual stop action.
+- [x] Detect silence during fallback recording and automatically stop, transcribe, and submit the recording.
+- [x] Test automatic end-of-speech timing and transcript handoff safeguards.
+- [x] Detect five seconds of voice-session inactivity and ask the member whether they are still present.
+- [x] Add a confirmation-gated “no further help” voice-session ending flow with farewell and secure session termination.
+- [x] Test inactivity prompts, affirmative continuation, and confirmed voice-session ending behavior.
+- [x] Add deterministic state tests for automatic speech-pause submission, five-second inactivity prompts, affirmative continuation, and confirmed ending behavior.
 - [x] Add regression coverage rejecting unsupported transcription-language values in the fallback contract.

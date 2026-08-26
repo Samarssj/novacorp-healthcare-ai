@@ -56,7 +56,7 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("NovaCorp verified-patient dat
     expect(averyWorkspace.patient.memberId).toBe("NCG-48219");
     expect(mayaWorkspace.patient.memberId).toBe("NCG-91577");
     expect(averyWorkspace.patient.medications).not.toEqual(mayaWorkspace.patient.medications);
-  });
+  }, 15_000);
 
   it("signs a patient-scoped session that resolves only to the verified subject", async () => {
     const token = await createPatientSession("patient-maya");

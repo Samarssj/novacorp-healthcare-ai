@@ -61,3 +61,16 @@ describe("care-message session boundary", () => {
     await expect(caller.care.sendMessage({ message: "What is my specialist copay?" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
+
+describe("patient session ending", () => {
+  it("clears the verified patient cookie through the dedicated care sign-out operation", async () => {
+    const cleared: Array<{ name: string; options: Record<string, unknown> }> = [];
+    const caller = appRouter.createCaller({
+      req: { protocol: "https", headers: {} },
+      res: { clearCookie: (name: string, options: Record<string, unknown>) => cleared.push({ name, options }) },
+    } as TrpcContext);
+    await expect(caller.care.signOutPatient()).resolves.toEqual({ success: true });
+    expect(cleared).toHaveLength(1);
+    expect(cleared[0]).toMatchObject({ name: PATIENT_SESSION_COOKIE, options: { maxAge: -1 } });
+  });
+});

@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapability";
 import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
-import { CircleAlert, CircleCheck, Loader2, Mic, Square, Volume2 } from "lucide-react";
+import { decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
+import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type RecognitionEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
@@ -19,6 +20,7 @@ type Recognition = {
   onend: (() => void) | null;
 };
 type RecognitionConstructor = new () => Recognition;
+type CaptureMode = "message" | "presence" | "end-confirmation";
 
 const languageOptions = [
   { value: "en", label: "English" },
@@ -62,23 +64,21 @@ export function VoiceConversationControls({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const silenceFrameRef = useRef<number | null>(null);
+  const inactivityTimerRef = useRef<number | null>(null);
+  const captureModeRef = useRef<CaptureMode>("message");
+  const nativeSubmittedRef = useRef(false);
   const [capability, setCapability] = useState<VoiceCapability>("checking");
   const [isListening, setIsListening] = useState(false);
   const [isRecordingFallback, setIsRecordingFallback] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isVoiceSessionActive, setIsVoiceSessionActive] = useState(false);
+  const [awaitingPresence, setAwaitingPresence] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState<TranscriptionLanguage>("en");
   const [remainingSeconds, setRemainingSeconds] = useState(FALLBACK_RECORDING_SECONDS);
-  const transcribeVoice = trpc.care.transcribeVoice.useMutation({
-    onSuccess: result => {
-      if (!result.text) {
-        setError("Nova could not detect speech in that recording. Please try again.");
-      } else {
-        onTranscript(result.text);
-      }
-    },
-    onError: () => setError("Nova could not transcribe that recording. Please try again or type your message."),
-  });
 
   const getRecognitionConstructor = () => {
     if (typeof window === "undefined") return undefined;
@@ -86,32 +86,78 @@ export function VoiceConversationControls({
     return browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
   };
 
-  useEffect(() => {
-    const hasNativeRecognition = Boolean(getRecognitionConstructor());
-    const hasFallbackRecording = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
-    setCapability(detectVoiceCapability({ hasNativeRecognition, hasFallbackRecording }));
-    return () => {
-      recognitionRef.current?.stop();
-      recorderRef.current?.stop();
-      streamRef.current?.getTracks().forEach(track => track.stop());
-      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+  const clearInactivityTimer = () => {
+    if (inactivityTimerRef.current) window.clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = null;
+  };
+
+  const stopSilenceDetector = () => {
+    if (silenceFrameRef.current) window.cancelAnimationFrame(silenceFrameRef.current);
+    silenceFrameRef.current = null;
+    audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+  };
+
+  const speakText = (text: string, onEnd?: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onEnd?.();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(plainText(text));
+    utterance.rate = 0.96;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      onEnd?.();
     };
-  }, []);
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      onEnd?.();
+    };
+    window.speechSynthesis.speak(utterance);
+  };
 
-  useEffect(() => {
-    if (!isRecordingFallback) return;
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      const remaining = remainingRecordingSeconds(startedAt);
-      setRemainingSeconds(remaining);
-      if (remaining === 0) recorderRef.current?.stop();
-    }, 250);
-    return () => window.clearInterval(interval);
-  }, [isRecordingFallback]);
+  const signOutPatient = trpc.care.signOutPatient.useMutation({
+    onSuccess: () => window.location.reload(),
+    onError: () => {
+      setIsEndingSession(false);
+      setError("Nova could not end the session. Please use the session control in the workspace.");
+    },
+  });
 
-  const startNativeListening = () => {
+  const endVoiceSession = () => {
+    clearInactivityTimer();
+    setIsEndingSession(true);
+    setAwaitingPresence(false);
+    speakText("Thank you for contacting NovaCorp Health. Your care session is now ending. Goodbye.", () => {
+      window.setTimeout(() => signOutPatient.mutate(), 350);
+    });
+  };
+
+  const handleVoiceTranscript = (transcript: string) => {
+    const mode = captureModeRef.current;
+    if (mode === "presence" || mode === "end-confirmation") {
+      if (decideVoiceSessionResponse(transcript) === "end") {
+        endVoiceSession();
+      } else {
+        setAwaitingPresence(false);
+        captureModeRef.current = "message";
+        setIsVoiceSessionActive(true);
+        speakText("I’m still here. What else can I help you with?");
+      }
+      return;
+    }
+    setIsVoiceSessionActive(true);
+    onTranscript(transcript);
+  };
+
+  const startNativeListening = (mode: CaptureMode = "message") => {
     const VoiceRecognition = getRecognitionConstructor();
     if (!VoiceRecognition) return;
+    clearInactivityTimer();
+    captureModeRef.current = mode;
+    nativeSubmittedRef.current = false;
     setError(null);
     const recognition = new VoiceRecognition();
     recognition.continuous = false;
@@ -119,20 +165,29 @@ export function VoiceConversationControls({
     recognition.lang = language;
     recognition.onresult = event => {
       const transcript = Array.from(event.results).map(result => result[0]?.transcript ?? "").join(" ").trim();
-      if (transcript) onTranscript(transcript);
+      if (transcript && !nativeSubmittedRef.current) {
+        nativeSubmittedRef.current = true;
+        handleVoiceTranscript(transcript);
+      }
     };
     recognition.onerror = event => {
       setIsListening(false);
+      setAwaitingPresence(false);
       setError(event.error === "not-allowed" ? "Microphone permission is required to use voice input." : "Nova could not hear that. Please try again or type your response.");
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      if (!nativeSubmittedRef.current && mode === "message") setError("Nova did not detect speech. Please speak naturally and pause when you are finished.");
+    };
     recognitionRef.current = recognition;
     setIsListening(true);
     recognition.start();
   };
 
-  const startFallbackRecording = async () => {
+  const startFallbackRecording = async (mode: CaptureMode = "message") => {
     try {
+      clearInactivityTimer();
+      captureModeRef.current = mode;
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -143,6 +198,7 @@ export function VoiceConversationControls({
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = async () => {
+        stopSilenceDetector();
         setIsRecordingFallback(false);
         stream.getTracks().forEach(track => track.stop());
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -159,33 +215,113 @@ export function VoiceConversationControls({
       setRemainingSeconds(FALLBACK_RECORDING_SECONDS);
       recorder.start();
       setIsRecordingFallback(true);
+      const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextConstructor) {
+        const context = new AudioContextConstructor();
+        audioContextRef.current = context;
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 1024;
+        context.createMediaStreamSource(stream).connect(analyser);
+        const samples = new Uint8Array(analyser.fftSize);
+        const startedAt = Date.now();
+        let lastSpeechAt: number | null = null;
+        const watchForSilence = () => {
+          analyser.getByteTimeDomainData(samples);
+          const averageAmplitude = samples.reduce((total, sample) => total + Math.abs(sample - 128), 0) / samples.length;
+          const now = Date.now();
+          if (averageAmplitude > 2.6) lastSpeechAt = now;
+          const hasNaturalPause = shouldAutoSubmitAfterPause({ elapsedMs: now - startedAt, silenceMs: lastSpeechAt === null ? 0 : now - lastSpeechAt, hasDetectedSpeech: lastSpeechAt !== null });
+          if (hasNaturalPause && recorder.state !== "inactive") {
+            recorder.stop();
+            return;
+          }
+          silenceFrameRef.current = window.requestAnimationFrame(watchForSilence);
+        };
+        silenceFrameRef.current = window.requestAnimationFrame(watchForSilence);
+      }
     } catch {
+      setAwaitingPresence(false);
       setError("Microphone permission is required to record a voice message.");
     }
   };
 
-  const stopRecording = () => {
-    if (isListening) recognitionRef.current?.stop();
-    if (isRecordingFallback) recorderRef.current?.stop();
-  };
-  const speakReply = () => {
-    if (!reply || typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(plainText(reply));
-    utterance.rate = 0.96;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    window.speechSynthesis.speak(utterance);
+  const requestInactivityCheck = () => {
+    if (!isVoiceSessionActive || isEndingSession || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence) return;
+    setAwaitingPresence(true);
+    captureModeRef.current = "presence";
+    const prompt = "Are you still there? Say yes to continue, or say no if you do not need anything else and I will end your session.";
+    if (capability === "native") {
+      speakText(prompt, () => window.setTimeout(() => startNativeListening("presence"), 250));
+    } else {
+      speakText(`${prompt} Use Record for Nova to reply.`);
+    }
   };
 
+  const requestVoiceSessionEnd = () => {
+    clearInactivityTimer();
+    setAwaitingPresence(true);
+    captureModeRef.current = "end-confirmation";
+    const prompt = "Would you like to end your care session? Say no to confirm ending the session, or say yes to continue.";
+    if (capability === "native") {
+      speakText(prompt, () => window.setTimeout(() => startNativeListening("end-confirmation"), 250));
+    } else {
+      speakText(`${prompt} Use Record for Nova to reply.`);
+    }
+  };
+
+  const transcribeVoice = trpc.care.transcribeVoice.useMutation({
+    onSuccess: result => {
+      if (!result.text) {
+        setError("Nova could not detect speech in that recording. Please try again.");
+      } else {
+        handleVoiceTranscript(result.text);
+      }
+    },
+    onError: () => setError("Nova could not transcribe that recording. Please try again or type your message."),
+  });
+
+  useEffect(() => {
+    const hasNativeRecognition = Boolean(getRecognitionConstructor());
+    const hasFallbackRecording = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
+    setCapability(detectVoiceCapability({ hasNativeRecognition, hasFallbackRecording }));
+    return () => {
+      recognitionRef.current?.stop();
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      stopSilenceDetector();
+      clearInactivityTimer();
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRecordingFallback) return;
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const remaining = remainingRecordingSeconds(startedAt);
+      setRemainingSeconds(remaining);
+      if (remaining === 0) recorderRef.current?.stop();
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [isRecordingFallback]);
+
+  useEffect(() => {
+    clearInactivityTimer();
+    if (!isVoiceSessionActive || !reply || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence || isEndingSession) return;
+    inactivityTimerRef.current = window.setTimeout(() => {
+      if (shouldPromptForVoiceInactivity({ elapsedMs: VOICE_INACTIVITY_MS, sessionActive: isVoiceSessionActive, awaitingResponse: awaitingPresence })) requestInactivityCheck();
+    }, VOICE_INACTIVITY_MS);
+    return clearInactivityTimer;
+  }, [reply, isVoiceSessionActive, isListening, isRecordingFallback, transcribeVoice.isPending, awaitingPresence, isEndingSession]);
+
+  const speakReply = () => reply && speakText(reply);
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;
   const countdown = formatRecordingCountdown(remainingSeconds);
   const support = capability === "native"
-    ? { label: "Native voice input ready", detail: "Your browser can transcribe speech directly.", className: "text-[#005a48]" }
+    ? { label: "Native voice input ready", detail: "Nova submits speech after you naturally pause.", className: "text-[#005a48]" }
     : capability === "fallback"
-      ? { label: "Server transcription fallback ready", detail: "Nova will securely transcribe a short recording when you speak.", className: "text-[#9a5d00]" }
+      ? { label: "Server transcription fallback ready", detail: "Nova stops and transcribes a short recording after a pause.", className: "text-[#9a5d00]" }
       : capability === "unavailable"
         ? { label: "Voice input unavailable", detail: "Use typed chat in this browser.", className: "text-[#7d2c1d]" }
         : { label: "Checking voice support", detail: "Nova is checking this browser.", className: "text-black/50" };
@@ -201,14 +337,17 @@ export function VoiceConversationControls({
         {languageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
     </label>
-    <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing} onClick={isRecording ? stopRecording : capability === "native" ? startNativeListening : startFallbackRecording} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
-      {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Square className="mr-1.5 size-3" />Stop recording</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
+    <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing || isRecording || isEndingSession} onClick={() => capability === "native" ? startNativeListening() : startFallbackRecording()} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
+      {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Listening</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
     </Button>
-    <Button type="button" variant="ghost" size="sm" disabled={!reply || isSpeaking} onClick={speakReply} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#005a48]">
+    <Button type="button" variant="ghost" size="sm" disabled={!reply || isSpeaking || isEndingSession} onClick={speakReply} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#005a48]">
       {isSpeaking ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : <Volume2 className="mr-1.5 size-3" />} Hear Nova
     </Button>
-    {isListening && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">Listening…</span>}
-    {isRecordingFallback && <div className="flex basis-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7d2c1d]" role="status" aria-live="polite"><span>Recording · {countdown} left</span><span className="h-1.5 w-32 overflow-hidden bg-[#b55239]/15"><span className="block h-full bg-[#b55239] transition-[width] duration-200" style={{ width: `${(remainingSeconds / FALLBACK_RECORDING_SECONDS) * 100}%` }} /></span><span className="font-normal normal-case tracking-normal text-black/50">Stops automatically at 0:00.</span></div>}
+    {isVoiceSessionActive && <Button type="button" variant="ghost" size="sm" disabled={isRecording || isEndingSession} onClick={requestVoiceSessionEnd} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#b55239]"><PhoneOff className="mr-1.5 size-3" />End session</Button>}
+    {isListening && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48]">Listening · Nova sends when you pause…</span>}
+    {isRecordingFallback && <div className="flex basis-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7d2c1d]" role="status" aria-live="polite"><span>Recording · {countdown} left</span><span className="h-1.5 w-32 overflow-hidden bg-[#b55239]/15"><span className="block h-full bg-[#b55239] transition-[width] duration-200" style={{ width: `${(remainingSeconds / FALLBACK_RECORDING_SECONDS) * 100}%` }} /></span><span className="font-normal normal-case tracking-normal text-black/50">Nova sends automatically after a brief pause.</span></div>}
+    {awaitingPresence && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">Nova is checking whether you need anything else. Say “no” to end your session, or “yes” to continue.</p>}
+    {isEndingSession && <p role="status" className="basis-full border-l-2 border-[#005a48] pl-3 text-xs leading-5 text-[#005a48]">Nova is ending your session. Goodbye.</p>}
     {error && <p role="status" className="basis-full border-l-2 border-[#b55239] pl-3 text-xs leading-5 text-[#7d2c1d]">{error}</p>}
   </div>;
 }
