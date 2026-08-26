@@ -17,6 +17,11 @@ const suggestedPrompts = [
   "Help me cancel my upcoming appointment.",
 ];
 
+export function requestsBookingForDisplayedSlot(message: string) {
+  const normalized = message.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  return /\b(?:book|schedule|reserve|take|confirm)\b.*\b(?:slot|appointment|it|this|that|one)\b/.test(normalized) || /\byes\b.*\b(?:book|schedule|reserve|take|confirm)\b/.test(normalized);
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="nova-label">{children}</p>;
 }
@@ -132,6 +137,11 @@ export default function Home() {
     }
     if (isPartialEndSessionPhrase(message)) {
       setMessages(current => [...current, { role: "user", content: message }, { role: "assistant", content: "If you would like to end your care session, select End session and confirm with yes." }]);
+      return;
+    }
+    if (bookingDraft && !bookingConfirmation && requestsBookingForDisplayedSlot(message)) {
+      setBookingReviewOpen(true);
+      setMessages(current => [...current, { role: "user", content: message }, { role: "assistant", content: "I’ve selected the displayed appointment for review. Please confirm the exact slot with Book now to submit the booking." }]);
       return;
     }
     setMessages(current => [...current, { role: "user", content: message }]); setChatError(null); setIsChatPending(true);

@@ -12,7 +12,7 @@ export function shouldPromptForVoiceInactivity({ elapsedMs, sessionActive, await
 
 export function confirmsNoFurtherHelp(transcript: string) {
   const normalized = transcript.toLowerCase().replace(/[^a-z\s']/g, " ").replace(/\s+/g, " ").trim();
-  return /^(no|nope|nothing|nothing else|no thanks|end|end session|please end|please end the session|goodbye|bye|that's all|thats all|thank you that's all|thanks that's all|i (?:do not|don't|dont) need (?:anything|anything else|any more help)|i'?m all set|im all set|we(?:'re| are) all good|all good|(?:have )?(?:a )?(?:good|great|nice) day|have a good day|(?:ok(?:ay)? )?(?:thanks|thank you) (?:and )?(?:have )?(?:a )?(?:good|great|nice) day|(?:ok(?:ay)? )?(?:thanks|thank you) (?:and )?(?:goodbye|bye))$/.test(normalized);
+  return /^(no|nope|nothing|nothing else|no thanks|end|end session|please end|please end the session|goodbye|bye|that's all|thats all|thank you that's all|thanks that's all|i (?:do not|don't|dont) need (?:anything|anything else|any more help)|i (?:do not|don't|dont) have (?:anything|anthing|anyting)(?: else| more)?(?: help)?|i'?m all set|im all set|we(?:'re| are) all good|all good|(?:have )?(?:a )?(?:good|great|nice) day|have a good day|(?:ok(?:ay)? )?(?:thanks|thank you) (?:and )?(?:have )?(?:a )?(?:good|great|nice) day|(?:ok(?:ay)? )?(?:thanks|thank you) (?:and )?(?:goodbye|bye))$/.test(normalized);
 }
 
 export function isPartialEndSessionPhrase(transcript: string) {

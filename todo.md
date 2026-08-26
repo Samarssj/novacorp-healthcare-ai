@@ -111,3 +111,6 @@
 - [x] Add regression coverage for stable verified-session handoff and partial end-session language.
 - [x] Add verified typed-chat end-session confirmation state so partial follow-up language does not reach care orchestration.
 - [x] Add regression coverage proving “and the session” ends a typed confirmed session without opening a coordinator stream.
+- [x] Recognize natural no-further-help variations such as “I don’t have anything else” and end the session with the existing farewell flow.
+- [x] Detect a clear request to book the currently displayed appointment slot and open the existing explicit booking confirmation rather than repeating availability.
+- [x] Add regression coverage for fuzzy closure wording and offered-slot booking handoff while retaining explicit booking submission confirmation.
