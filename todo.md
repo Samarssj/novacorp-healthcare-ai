@@ -38,3 +38,8 @@
 - [x] Test the repaired verification route and voice-to-text handoff without bypassing patient-session safeguards.
 - [x] Add regression coverage proving voice transcripts use the same verification and patient-session-gated handlers as typed messages.
 - [x] Test the voice-control transcript handoff and a verified-session positive path without invoking unbounded model output.
+- [x] Add a visible browser voice-support indicator before microphone recording begins.
+- [x] Add a bounded in-memory server transcription fallback for browsers without native speech recognition.
+- [x] Test fallback payload validation and transcript handoff safeguards.
+- [x] Add automated tests for native, fallback, and unavailable browser voice-capability states.
+- [x] Validate a successful server transcription fallback path using a controlled transcription adapter response.

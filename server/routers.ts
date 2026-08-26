@@ -11,6 +11,8 @@ import { continueMemberConversation } from "./novacorp/memberVerification";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
 import { createPatientSession, PATIENT_SESSION_COOKIE, resolvePatientSession } from "./novacorp/session";
 import { executeApprovedTool } from "./novacorp/tools";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { runVoiceFallback, voiceFallbackInput } from "./novacorp/voiceFallback";
 
 const memberVerificationSchema = z.object({
   memberId: z.string().trim().min(5).max(64),
@@ -55,6 +57,12 @@ export const appRouter = router({
         ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
       }
       return result;
+    }),
+    transcribeVoice: publicProcedure.input(voiceFallbackInput).mutation(async ({ input }) => {
+      // Keep fallback audio only in request memory; it is not stored with the patient record.
+      const result = await runVoiceFallback(input, transcribeAudio);
+      if ("error" in result) throw new TRPCError({ code: "BAD_REQUEST", message: result.error, cause: result });
+      return { text: result.text.trim(), language: result.language };
     }),
     verifyMember: publicProcedure.input(memberVerificationSchema).mutation(async ({ input, ctx }) => {
       const patient = await verifyPatientCredentials(input.memberId, input.phoneNumber);
