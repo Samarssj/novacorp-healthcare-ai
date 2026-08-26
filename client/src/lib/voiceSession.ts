@@ -12,9 +12,19 @@ export function shouldPromptForVoiceInactivity({ elapsedMs, sessionActive, await
 
 export function confirmsNoFurtherHelp(transcript: string) {
   const normalized = transcript.toLowerCase().replace(/[^a-z\s']/g, " ").replace(/\s+/g, " ").trim();
-  return /^(no|nope|nothing|nothing else|no thanks|end|end session|goodbye|bye|that's all|thats all)$/.test(normalized);
+  return /^(no|nope|nothing|nothing else|no thanks|end|end session|please end|please end the session|goodbye|bye|that's all|thats all|thank you that's all|thanks that's all|i (?:do not|don't|dont) need (?:anything|anything else|any more help)|i'?m all set|im all set|we(?:'re| are) all good|all good|(?:have )?(?:a )?(?:good|great|nice) day|have a good day)$/.test(normalized);
 }
 
 export function decideVoiceSessionResponse(transcript: string) {
   return confirmsNoFurtherHelp(transcript) ? "end" : "continue";
+}
+
+/** A session-end button asks an affirmative question, so only a clear yes ends care. */
+export function confirmsEndSession(transcript: string) {
+  const normalized = transcript.toLowerCase().replace(/[^a-z\s']/g, " ").replace(/\s+/g, " ").trim();
+  return /^(yes|yeah|yep|yes please|yes please end|yes please end my session|please do|confirm|confirm end|end it|please end|please end the session|i want to end|i want to end the session|i do|that's all|thats all|goodbye|bye)$/.test(normalized) || confirmsNoFurtherHelp(normalized);
+}
+
+export function decideEndSessionConfirmation(transcript: string) {
+  return confirmsEndSession(transcript) ? "end" : "continue";
 }

@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { detectVoiceCapability, type VoiceCapability } from "@/lib/voiceCapability";
 import { emptySpeechRetryNotice, isEmptySpeechRecognitionError, nativeRecognitionLocale } from "@/lib/nativeVoiceRecognition";
 import { FALLBACK_RECORDING_SECONDS, formatRecordingCountdown, remainingRecordingSeconds } from "@/lib/voiceRecording";
-import { decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
+import { decideEndSessionConfirmation, decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "@/lib/voiceSession";
 import { activeMicrophoneBars, normalizeMicrophoneLevel } from "../lib/microphoneLevel";
 import { CircleAlert, CircleCheck, Loader2, Mic, PhoneOff } from "lucide-react";
 import React from "react";
@@ -218,8 +218,13 @@ export function VoiceConversationControls({
   const handleVoiceTranscript = (transcript: string) => {
     clearInactivityTimer();
     const mode = captureModeRef.current;
+    if (mode === "message" && decideVoiceSessionResponse(transcript) === "end") {
+      endVoiceSession();
+      return;
+    }
     if (mode === "presence" || mode === "end-confirmation") {
-      if (decideVoiceSessionResponse(transcript) === "end") {
+      const decision = mode === "end-confirmation" ? decideEndSessionConfirmation(transcript) : decideVoiceSessionResponse(transcript);
+      if (decision === "end") {
         endVoiceSession();
       } else {
         setAwaitingPresence(false);
@@ -400,7 +405,7 @@ export function VoiceConversationControls({
     clearInactivityTimer();
     setAwaitingPresence(true);
     captureModeRef.current = "end-confirmation";
-    const prompt = "Would you like to end your care session? Say no to confirm ending the session, or say yes to continue.";
+    const prompt = "Would you like to end your care session? Say yes to end your session, or no to keep it open.";
     const spokenPrompt = capability === "native" ? prompt : `${prompt} Use Record for Nova to reply.`;
     onAssistantVoiceMessage?.(spokenPrompt);
     if (capability === "native") {

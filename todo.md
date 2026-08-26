@@ -96,3 +96,10 @@
 - [x] Add regression coverage for the reported spaced Avery credential pair and clear retry-state guidance.
 - [x] Normalize spoken or typed member IDs with spaces or omitted hyphens and reject phone-like values at the member-ID step.
 - [x] Verify normalized mobile values for Avery, Maya, and Jordan against all seeded phone hashes and cover each shared demonstration pair.
+- [x] Recognize courteous closure phrases such as “I don’t need anything,” “have a good day,” and equivalent voice or typed statements as no-further-help confirmation.
+- [x] Securely end the patient session after recognized courteous closure language while preserving the existing farewell flow.
+- [x] Present clear supported post-verification care request categories in the verified workspace.
+- [x] Add regression coverage for expanded closure phrases, secure sign-out, and verified-care capability guidance.
+- [x] Make a clear “yes” confirm end-session and a clear “no” continue-session when Nova asks whether to end care.
+- [x] Interpret courteous closure language contextually while keeping member verification, booking, cancellation, and sign-out guarded by their existing explicit controls.
+- [x] Add regression coverage for affirmative end confirmation, negative continuation, ambiguous responses, and guarded care actions.

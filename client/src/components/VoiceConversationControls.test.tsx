@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     care: {
-      signOutPatient: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      signOutPatient: { useMutation: () => ({ mutate: signOutPatient, isPending: false }) },
       transcribeVoice: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
   },
@@ -15,6 +15,8 @@ vi.mock("@/lib/trpc", () => ({
 
 import { VoiceConversationControls } from "./VoiceConversationControls";
 import { VOICE_INACTIVITY_MS } from "../lib/voiceSession";
+
+const signOutPatient = vi.fn();
 
 type RecognitionHandlers = {
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
@@ -65,6 +67,7 @@ describe("VoiceConversationControls native silence recovery", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    signOutPatient.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -228,6 +231,43 @@ describe("VoiceConversationControls native silence recovery", () => {
     });
     await user.click(screen.getByRole("button", { name: /end session/i }));
 
-    expect(onAssistantVoiceMessage).toHaveBeenCalledWith(expect.stringMatching(/Would you like to end your care session/i));
+    expect(onAssistantVoiceMessage).toHaveBeenCalledWith("Would you like to end your care session? Say yes to end your session, or no to keep it open.");
+  });
+
+  it("ends the session when the member says yes to Nova's explicit end-session prompt", async () => {
+    const user = userEvent.setup();
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    await act(async () => {
+      FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "Hello" }]] });
+      FakeSpeechRecognition.latest?.onend?.();
+    });
+    await user.click(screen.getByRole("button", { name: /end session/i }));
+    await new Promise(resolve => setTimeout(resolve, 275));
+    await act(async () => FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "Yes" }]] }));
+    await new Promise(resolve => setTimeout(resolve, 375));
+
+    expect(screen.getByText(/Nova is ending your session/i)).toBeTruthy();
+    expect(signOutPatient).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the session open when the member says no to Nova's explicit end-session prompt", async () => {
+    const user = userEvent.setup();
+    const onAssistantVoiceMessage = vi.fn();
+    render(<VoiceConversationControls onTranscript={vi.fn()} onAssistantVoiceMessage={onAssistantVoiceMessage} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    await act(async () => {
+      FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "Hello" }]] });
+      FakeSpeechRecognition.latest?.onend?.();
+    });
+    await user.click(screen.getByRole("button", { name: /end session/i }));
+    await new Promise(resolve => setTimeout(resolve, 275));
+    await act(async () => FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "No, keep it open" }]] }));
+
+    expect(onAssistantVoiceMessage).toHaveBeenCalledWith("I’m still here. What else can I help you with?");
+    expect(screen.queryByText(/Nova is ending your session/i)).toBeNull();
+    expect(signOutPatient).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmsNoFurtherHelp, decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "./voiceSession";
+import { confirmsNoFurtherHelp, decideEndSessionConfirmation, decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "./voiceSession";
 
 describe("voice session completion", () => {
   it("uses a ten-second inactivity threshold before checking in", () => {
@@ -10,6 +10,8 @@ describe("voice session completion", () => {
     expect(confirmsNoFurtherHelp("No thanks")).toBe(true);
     expect(confirmsNoFurtherHelp("End session")).toBe(true);
     expect(confirmsNoFurtherHelp("That's all")).toBe(true);
+    expect(confirmsNoFurtherHelp("I don't need anything else")).toBe(true);
+    expect(confirmsNoFurtherHelp("Have a good day")).toBe(true);
   });
 
   it("does not end a session on an affirmative continuation", () => {
@@ -36,5 +38,12 @@ describe("voice session completion", () => {
   it("maps presence answers to continuation or a confirmed session end", () => {
     expect(decideVoiceSessionResponse("No thanks")).toBe("end");
     expect(decideVoiceSessionResponse("Yes, please continue")).toBe("continue");
+  });
+
+  it("uses affirmative end confirmation while a negative answer keeps the session open", () => {
+    expect(decideEndSessionConfirmation("Yes, please end my session")).toBe("end");
+    expect(decideEndSessionConfirmation("Goodbye")).toBe("end");
+    expect(decideEndSessionConfirmation("No, keep it open")).toBe("continue");
+    expect(decideEndSessionConfirmation("I'm not sure yet")).toBe("continue");
   });
 });
