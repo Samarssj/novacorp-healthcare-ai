@@ -46,5 +46,5 @@
 - [x] Add a visible countdown and automatic stop limit for fallback voice recording.
 - [x] Add a transcription-language selector and pass the selected language through the fallback route.
 - [x] Test countdown behavior, language validation, and language-aware fallback transcription requests.
-- [ ] Verify and explicitly push the latest project checkpoint to the configured GitHub branch.
+- [x] Verify and explicitly push the latest project checkpoint to the configured GitHub branch.
 - [x] Add regression coverage rejecting unsupported transcription-language values in the fallback contract.
