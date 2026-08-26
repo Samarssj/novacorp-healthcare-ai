@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { VoiceConversationControls } from "@/components/VoiceConversationControls";
+import { handOffVoiceTranscript } from "@/lib/voiceTranscript";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, User, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -128,6 +130,7 @@ export function AIChatBox({
 
   // Filter out system messages
   const displayMessages = messages.filter((msg) => msg.role !== "system");
+  const latestAssistantReply = [...displayMessages].reverse().find((message) => message.role === "assistant")?.content;
 
   // Calculate min-height for last assistant message to push user message to top
   const [minHeightForLastMessage, setMinHeightForLastMessage] = useState(0);
@@ -184,6 +187,13 @@ export function AIChatBox({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  const handleVoiceTranscript = (transcript: string) => {
+    if (handOffVoiceTranscript(transcript, onSendMessage, isLoading)) {
+      setInput("");
+      scrollToBottom();
     }
   };
 
@@ -301,6 +311,13 @@ export function AIChatBox({
           </ScrollArea>
         )}
       </div>
+
+      <VoiceConversationControls
+        onTranscript={handleVoiceTranscript}
+        reply={latestAssistantReply}
+        disabled={isLoading}
+        className="mx-4 mt-2"
+      />
 
       {/* Input Area */}
       <form

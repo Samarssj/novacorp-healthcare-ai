@@ -32,3 +32,9 @@
 - [x] Update future project commit authorship to the user's verified GitHub identity.
 - [x] Redesign the README with technology badges, a member-verification workflow, and a clear system architecture diagram.
 - [x] Verify the configured Git author identity for all future project commits.
+- [x] Restore the missing `care.beginVerificationConversation` procedure and validate the member-access page load.
+- [x] Add microphone capture, browser-native speech recognition, speech playback, and protected transcript submission to Nova’s verification and care conversations.
+- [x] Add accessible voice controls, recording states, and voice-error handling to the member experience.
+- [x] Test the repaired verification route and voice-to-text handoff without bypassing patient-session safeguards.
+- [x] Add regression coverage proving voice transcripts use the same verification and patient-session-gated handlers as typed messages.
+- [x] Test the voice-control transcript handoff and a verified-session positive path without invoking unbounded model output.
