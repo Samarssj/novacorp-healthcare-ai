@@ -23,6 +23,7 @@ type Recognition = {
 };
 type RecognitionConstructor = new () => Recognition;
 type CaptureMode = "message" | "presence" | "end-confirmation";
+type VoiceSessionWindow = typeof window & { __novaHandsFreeSession?: boolean };
 
 const languageOptions = [
   { value: "en", label: "English" },
@@ -51,16 +52,30 @@ function preferredMimeType() {
   return ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find(type => MediaRecorder.isTypeSupported(type));
 }
 
+function hasPersistedHandsFreeSession() {
+  return typeof window !== "undefined" && Boolean((window as VoiceSessionWindow).__novaHandsFreeSession);
+}
+
+function setPersistedHandsFreeSession(active: boolean) {
+  if (typeof window !== "undefined") (window as VoiceSessionWindow).__novaHandsFreeSession = active;
+}
+
 export function VoiceConversationControls({
   onTranscript,
   reply,
   onAssistantVoiceMessage,
+  initialVoicePrompt,
+  autoStartVoiceSession = false,
+  onVoiceSessionStart,
   disabled = false,
   className,
 }: {
   onTranscript: (transcript: string) => void;
   reply?: string;
   onAssistantVoiceMessage?: (content: string) => void;
+  initialVoicePrompt?: string;
+  autoStartVoiceSession?: boolean;
+  onVoiceSessionStart?: () => void;
   disabled?: boolean;
   className?: string;
 }) {
@@ -75,6 +90,9 @@ export function VoiceConversationControls({
   const nativeSubmittedRef = useRef(false);
   const shouldSpeakNextReplyRef = useRef(false);
   const lastVoicePlayedReplyRef = useRef<string | undefined>(undefined);
+  const hasStartedOpeningPromptRef = useRef(false);
+  const voiceSessionActiveRef = useRef(false);
+  const resumeListeningTimerRef = useRef<number | null>(null);
   const [capability, setCapability] = useState<VoiceCapability>("checking");
   const [isListening, setIsListening] = useState(false);
   const [isRecordingFallback, setIsRecordingFallback] = useState(false);
@@ -95,6 +113,11 @@ export function VoiceConversationControls({
   const clearInactivityTimer = () => {
     if (inactivityTimerRef.current) window.clearTimeout(inactivityTimerRef.current);
     inactivityTimerRef.current = null;
+  };
+
+  const clearResumeListeningTimer = () => {
+    if (resumeListeningTimerRef.current) window.clearTimeout(resumeListeningTimerRef.current);
+    resumeListeningTimerRef.current = null;
   };
 
   const stopSilenceDetector = () => {
@@ -131,6 +154,9 @@ export function VoiceConversationControls({
 
   const endVoiceSession = () => {
     clearInactivityTimer();
+    clearResumeListeningTimer();
+    voiceSessionActiveRef.current = false;
+    setPersistedHandsFreeSession(false);
     setIsEndingSession(true);
     setAwaitingPresence(false);
     const farewell = "Thank you for contacting NovaCorp Health. Your care session is now ending. Goodbye.";
@@ -157,6 +183,7 @@ export function VoiceConversationControls({
     }
     shouldSpeakNextReplyRef.current = true;
     setIsVoiceSessionActive(true);
+    voiceSessionActiveRef.current = true;
     onTranscript(transcript);
   };
 
@@ -185,6 +212,10 @@ export function VoiceConversationControls({
         setAwaitingPresence(false);
         captureModeRef.current = "message";
         setNotice(emptySpeechRetryNotice());
+        if (voiceSessionActiveRef.current && mode === "message") {
+          clearResumeListeningTimer();
+          resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 650);
+        }
         return;
       }
       setAwaitingPresence(false);
@@ -192,7 +223,13 @@ export function VoiceConversationControls({
     };
     recognition.onend = () => {
       setIsListening(false);
-      if (!nativeSubmittedRef.current && mode === "message") setNotice(emptySpeechRetryNotice());
+      if (!nativeSubmittedRef.current && mode === "message") {
+        setNotice(emptySpeechRetryNotice());
+        if (voiceSessionActiveRef.current) {
+          clearResumeListeningTimer();
+          resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 650);
+        }
+      }
     };
     recognitionRef.current = recognition;
     setIsListening(true);
@@ -265,6 +302,28 @@ export function VoiceConversationControls({
     }
   };
 
+  const beginHandsFreeVoiceSession = (openingPrompt?: string) => {
+    clearInactivityTimer();
+    clearResumeListeningTimer();
+    hasStartedOpeningPromptRef.current = true;
+    setError(null);
+    setNotice(null);
+    setIsVoiceSessionActive(true);
+    voiceSessionActiveRef.current = true;
+    setPersistedHandsFreeSession(true);
+    onVoiceSessionStart?.();
+    const prompt = openingPrompt?.trim();
+    if (prompt) {
+      onAssistantVoiceMessage?.(prompt);
+      speakText(prompt, () => {
+        if (getRecognitionConstructor()) window.setTimeout(() => startNativeListening("message"), 250);
+      });
+      return;
+    }
+    if (capability === "native") startNativeListening("message");
+    else startFallbackRecording("message");
+  };
+
   const requestInactivityCheck = () => {
     if (!isVoiceSessionActive || isEndingSession || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence) return;
     setAwaitingPresence(true);
@@ -314,9 +373,20 @@ export function VoiceConversationControls({
       streamRef.current?.getTracks().forEach(track => track.stop());
       stopSilenceDetector();
       clearInactivityTimer();
+      clearResumeListeningTimer();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     };
   }, []);
+
+  useEffect(() => {
+    voiceSessionActiveRef.current = isVoiceSessionActive;
+  }, [isVoiceSessionActive]);
+
+  useEffect(() => {
+    if ((!autoStartVoiceSession && !hasPersistedHandsFreeSession()) || hasStartedOpeningPromptRef.current) return;
+    hasStartedOpeningPromptRef.current = true;
+    beginHandsFreeVoiceSession(initialVoicePrompt ?? "You are verified. What can I help you with today?");
+  }, [autoStartVoiceSession, initialVoicePrompt]);
 
   useEffect(() => {
     if (!isRecordingFallback) return;
@@ -333,7 +403,12 @@ export function VoiceConversationControls({
     if (!reply || !shouldSpeakNextReplyRef.current || lastVoicePlayedReplyRef.current === reply) return;
     shouldSpeakNextReplyRef.current = false;
     lastVoicePlayedReplyRef.current = reply;
-    speakText(reply);
+    speakText(reply, () => {
+      if (voiceSessionActiveRef.current && getRecognitionConstructor()) {
+        clearResumeListeningTimer();
+        resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 250);
+      }
+    });
   }, [reply]);
 
   useEffect(() => {
@@ -367,7 +442,7 @@ export function VoiceConversationControls({
         {languageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
     </label>
-    <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing || isRecording || isEndingSession} onClick={() => capability === "native" ? startNativeListening() : startFallbackRecording()} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
+    <Button type="button" variant="outline" size="sm" disabled={disabled || capability === "checking" || capability === "unavailable" || isTranscribing || isRecording || isEndingSession} onClick={() => beginHandsFreeVoiceSession(initialVoicePrompt)} className={cn("rounded-none border-black/25 bg-transparent text-[10px] uppercase tracking-[0.12em]", isRecording && "border-[#005a48] bg-[#e7f1eb] text-[#005a48]")}> 
       {isTranscribing ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Transcribing</> : isRecording ? <><Loader2 className="mr-1.5 size-3 animate-spin" />Listening</> : <><Mic className="mr-1.5 size-3" />{capability === "fallback" ? "Record for Nova" : "Speak to Nova"}</>}
     </Button>
     {isVoiceSessionActive && <Button type="button" variant="ghost" size="sm" disabled={isRecording || isEndingSession} onClick={requestVoiceSessionEnd} className="rounded-none text-[10px] uppercase tracking-[0.12em] text-black/60 hover:bg-transparent hover:text-[#b55239]"><PhoneOff className="mr-1.5 size-3" />End session</Button>}

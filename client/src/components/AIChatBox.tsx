@@ -66,6 +66,15 @@ export type AIChatBoxProps = {
    * spoken exchange remains auditable in the visible chat transcript.
    */
   onVoiceAssistantMessage?: (content: string) => void;
+
+  /** Starts Nova's opening prompt when the member begins a hands-free session. */
+  initialVoicePrompt?: string;
+
+  /** Continues a verified hands-free session after the authentication screen unmounts. */
+  autoStartVoiceSession?: boolean;
+
+  /** Records that a member has explicitly initiated a hands-free voice session. */
+  onVoiceSessionStart?: () => void;
 };
 
 /**
@@ -129,6 +138,9 @@ export function AIChatBox({
   emptyStateMessage = "Start a conversation with AI",
   suggestedPrompts,
   onVoiceAssistantMessage,
+  initialVoicePrompt,
+  autoStartVoiceSession,
+  onVoiceSessionStart,
 }: AIChatBoxProps) {
   const [input, setInput] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -324,6 +336,9 @@ export function AIChatBox({
         onTranscript={handleVoiceTranscript}
         reply={latestAssistantReply}
         onAssistantVoiceMessage={onVoiceAssistantMessage}
+        initialVoicePrompt={initialVoicePrompt}
+        autoStartVoiceSession={autoStartVoiceSession}
+        onVoiceSessionStart={onVoiceSessionStart}
         disabled={isLoading}
         className="mx-4 mt-2"
       />

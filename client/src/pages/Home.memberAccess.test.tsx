@@ -16,9 +16,10 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 vi.mock("@/components/AIChatBox", () => ({
-  AIChatBox: ({ messages, onSendMessage, placeholder }: { messages: Array<{ role: string; content: string }>; onSendMessage: (message: string) => void; placeholder: string }) => (
+  AIChatBox: ({ messages, onSendMessage, placeholder, initialVoicePrompt, onVoiceSessionStart, onVoiceAssistantMessage }: { messages: Array<{ role: string; content: string }>; onSendMessage: (message: string) => void; placeholder: string; initialVoicePrompt?: string; onVoiceSessionStart?: () => void; onVoiceAssistantMessage?: (content: string) => void }) => (
     <div>
       {messages.map((message, index) => <p key={index}>{message.content}</p>)}
+      <button onClick={() => { onVoiceSessionStart?.(); if (initialVoicePrompt) onVoiceAssistantMessage?.(initialVoicePrompt); }}>Speak to Nova</button>
       <input placeholder={placeholder} onKeyDown={event => {
         if (event.key === "Enter") onSendMessage(event.currentTarget.value);
       }} />
@@ -28,18 +29,18 @@ vi.mock("@/components/AIChatBox", () => ({
 
 import { MemberAccess } from "./Home";
 
-describe("MemberAccess greeting", () => {
+describe("MemberAccess voice greeting", () => {
   afterEach(cleanup);
 
-  it("keeps Nova's greeting out of the chat until the member says hi", async () => {
+  it("writes Nova's verification greeting when the member selects Speak to Nova", async () => {
     const user = userEvent.setup();
-    render(<MemberAccess onVerified={vi.fn()} />);
+    const onVoiceSessionStart = vi.fn();
+    render(<MemberAccess onVerified={vi.fn()} onVoiceSessionStart={onVoiceSessionStart} />);
 
     expect(screen.queryByText(greeting)).toBeNull();
-    const input = screen.getByPlaceholderText("Say hi to begin…");
-    await user.type(input, "hi{enter}");
+    await user.click(screen.getByRole("button", { name: /speak to nova/i }));
 
     expect(await screen.findByText(greeting)).toBeTruthy();
-    expect(screen.getByText("hi")).toBeTruthy();
+    expect(onVoiceSessionStart).toHaveBeenCalledTimes(1);
   });
 });

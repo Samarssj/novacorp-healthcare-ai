@@ -2,7 +2,6 @@ import { AIChatBox, type Message } from "@/components/AIChatBox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { isConversationGreeting } from "@/lib/conversationStart";
 import { trpc } from "@/lib/trpc";
 import type { AgentActivity, AppointmentSlot, BookingConfirmation, CoordinatorResult, PolicyEvidence } from "@shared/novacorp";
 import { ArrowUpRight, Check, ChevronRight, CircleAlert, Clock3, FileText, HeartPulse, Loader2, LockKeyhole, LogOut, MapPin, ShieldCheck, Sparkles, Stethoscope } from "lucide-react";
@@ -38,7 +37,7 @@ function EvidenceCard({ evidence, hasSearched }: { evidence: PolicyEvidence[]; h
   </section>;
 }
 
-export function MemberAccess({ onVerified }: { onVerified: () => void }) {
+export function MemberAccess({ onVerified, onVoiceSessionStart = () => undefined }: { onVerified: () => void; onVoiceSessionStart?: () => void }) {
   const beginConversation = trpc.care.beginVerificationConversation.useQuery();
   const [conversation, setConversation] = useState<Message[]>([]);
   const [stage, setStage] = useState<"awaiting_member_id" | "awaiting_phone" | "verified">("awaiting_member_id");
@@ -57,27 +56,17 @@ export function MemberAccess({ onVerified }: { onVerified: () => void }) {
   const onSendMessage = (message: string) => {
     if (continueConversation.isPending || stage === "verified") return;
     setConversation(current => [...current, { role: "user", content: message }]);
-    if (!hasStartedConversation) {
-      if (!isConversationGreeting(message)) {
-        setConversation(current => [...current, { role: "assistant", content: "Say “hi” to begin your private care conversation with Nova." }]);
-        return;
-      }
-      if (beginConversation.data) {
-        setHasStartedConversation(true);
-        setConversation(current => [...current, { role: "assistant", content: beginConversation.data.reply }]);
-      }
-      return;
-    }
+    if (!hasStartedConversation) setHasStartedConversation(true);
     continueConversation.mutate({ stage, message, memberId });
   };
   const placeholder = stage === "awaiting_member_id" ? "Enter your member ID…" : "Enter your mobile number…";
-  return <div className="min-h-screen bg-[#f7f3ec] text-[#191815]"><div className="mx-auto flex min-h-screen max-w-[1520px] flex-col px-5 py-5 sm:px-8 lg:px-12 lg:py-8"><header className="flex items-center justify-between border-b border-black/30 pb-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/65"><div className="flex items-center gap-3"><HeartPulse className="size-4 text-[#005a48]" /> NovaCorp Health <span className="hidden text-black/35 sm:inline">/ Private care conversation</span></div><div className="flex items-center gap-2"><LockKeyhole className="size-3.5 text-[#005a48]" /> Protected care workspace</div></header><main className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-12 lg:gap-10 lg:py-20"><section className="lg:col-span-7"><SectionLabel>Member services</SectionLabel><h1 className="mt-5 max-w-3xl font-editorial text-[clamp(3.5rem,8vw,8.4rem)] font-semibold leading-[0.84] tracking-[-0.065em]">Care that begins with <em className="font-normal text-[#005a48]">context.</em></h1><p className="mt-8 max-w-xl font-editorial text-2xl leading-8 text-black/62">A private conversation with Nova begins your care journey, then opens only the workspace associated with your verified member record.</p><div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-t border-black/20 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-black/52"><p>Conversation-led</p><p>Verified identity</p><p>Scoped records</p></div></section><section className="nova-panel bg-[#fcfaf6] lg:col-span-4 lg:col-start-9"><div className="flex items-start justify-between gap-4"><div><SectionLabel>Care assistant</SectionLabel><h2 className="mt-3 font-editorial text-4xl leading-none">Meet Nova.</h2></div><span className="grid size-10 place-items-center rounded-full bg-[#005a48] text-white"><Sparkles className="size-4" /></span></div><p className="mt-4 text-sm leading-6 text-black/60">Say “hi” by voice or text to begin a secure conversation. Nova’s spoken prompts and replies remain visible in the chat.</p><div className="mt-6"><AIChatBox messages={conversation} onSendMessage={onSendMessage} onVoiceAssistantMessage={content => setConversation(current => [...current, { role: "assistant", content }])} isLoading={continueConversation.isPending || beginConversation.isLoading} placeholder={hasStartedConversation ? placeholder : "Say hi to begin…"} emptyStateMessage="Say “hi” or select Speak to Nova to begin." height="350px" className="!rounded-none !border-black/25 !bg-transparent !shadow-none" /></div>{toolCall && <p className="mt-4 flex items-center gap-2 border-t border-[#005a48]/20 pt-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#005a48]"><ShieldCheck className="size-3.5" /> Secure operation complete · {toolCall}</p>}{continueConversation.error && <p role="alert" className="mt-4 border-l-2 border-red-800 pl-3 text-xs leading-5 text-red-800">{continueConversation.error.message}</p>}<p className="mt-5 text-[10px] leading-4 uppercase tracking-[0.12em] text-black/45">Your session automatically expires after 30 minutes of inactivity.</p></section></main><footer className="flex justify-between border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45"><p>NovaCorp Health</p><p>Member care coordination</p></footer></div></div>;
+  return <div className="min-h-screen bg-[#f7f3ec] text-[#191815]"><div className="mx-auto flex min-h-screen max-w-[1520px] flex-col px-5 py-5 sm:px-8 lg:px-12 lg:py-8"><header className="flex items-center justify-between border-b border-black/30 pb-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/65"><div className="flex items-center gap-3"><HeartPulse className="size-4 text-[#005a48]" /> NovaCorp Health <span className="hidden text-black/35 sm:inline">/ Private care conversation</span></div><div className="flex items-center gap-2"><LockKeyhole className="size-3.5 text-[#005a48]" /> Protected care workspace</div></header><main className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-12 lg:gap-10 lg:py-20"><section className="lg:col-span-7"><SectionLabel>Member services</SectionLabel><h1 className="mt-5 max-w-3xl font-editorial text-[clamp(3.5rem,8vw,8.4rem)] font-semibold leading-[0.84] tracking-[-0.065em]">Care that begins with <em className="font-normal text-[#005a48]">context.</em></h1><p className="mt-8 max-w-xl font-editorial text-2xl leading-8 text-black/62">A private conversation with Nova begins your care journey, then opens only the workspace associated with your verified member record.</p><div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-t border-black/20 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-black/52"><p>Conversation-led</p><p>Verified identity</p><p>Scoped records</p></div></section><section className="nova-panel bg-[#fcfaf6] lg:col-span-4 lg:col-start-9"><div className="flex items-start justify-between gap-4"><div><SectionLabel>Care assistant</SectionLabel><h2 className="mt-3 font-editorial text-4xl leading-none">Meet Nova.</h2></div><span className="grid size-10 place-items-center rounded-full bg-[#005a48] text-white"><Sparkles className="size-4" /></span></div><p className="mt-4 text-sm leading-6 text-black/60">Select Speak to Nova for an immediate spoken greeting and a hands-free secure conversation. Nova’s spoken prompts and replies remain visible in the chat.</p><div className="mt-6"><AIChatBox messages={conversation} onSendMessage={onSendMessage} onVoiceAssistantMessage={content => setConversation(current => [...current, { role: "assistant", content }])} initialVoicePrompt={beginConversation.data?.reply} onVoiceSessionStart={() => { setHasStartedConversation(true); onVoiceSessionStart(); }} isLoading={continueConversation.isPending || beginConversation.isLoading} placeholder={placeholder} emptyStateMessage="Select Speak to Nova or enter your member ID to begin." height="350px" className="!rounded-none !border-black/25 !bg-transparent !shadow-none" /></div>{toolCall && <p className="mt-4 flex items-center gap-2 border-t border-[#005a48]/20 pt-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#005a48]"><ShieldCheck className="size-3.5" /> Secure operation complete · {toolCall}</p>}{continueConversation.error && <p role="alert" className="mt-4 border-l-2 border-red-800 pl-3 text-xs leading-5 text-red-800">{continueConversation.error.message}</p>}<p className="mt-5 text-[10px] leading-4 uppercase tracking-[0.12em] text-black/45">Your session automatically expires after 30 minutes of inactivity.</p></section></main><footer className="flex justify-between border-t border-black/30 py-5 text-[10px] uppercase tracking-[0.14em] text-black/45"><p>NovaCorp Health</p><p>Member care coordination</p></footer></div></div>;
 }
 
 export default function Home() {
   const [isVerified, setIsVerified] = useState(false);
   const workspaceQuery = trpc.care.getWorkspace.useQuery(undefined, { enabled: isVerified, retry: false });
-  const signOutMutation = trpc.care.signOutPatient.useMutation({ onSuccess: () => setIsVerified(false) });
+  const signOutMutation = trpc.care.signOutPatient.useMutation({ onSuccess: () => { (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = false; setIsVerified(false); } });
   const [messages, setMessages] = useState<Message[]>([]);
   const [activities, setActivities] = useState<AgentActivity[]>([]);
   const [evidence, setEvidence] = useState<PolicyEvidence[]>([]);
@@ -107,9 +96,9 @@ export default function Home() {
   };
 
   const greeting = useMemo(() => patient ? `Welcome back, ${patient.name.split(" ")[0]}.` : "Welcome back.", [patient]);
-  if (!isVerified) return <MemberAccess onVerified={() => setIsVerified(true)} />;
+  if (!isVerified) return <MemberAccess onVerified={() => setIsVerified(true)} onVoiceSessionStart={() => { (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = true; }} />;
   if (workspaceQuery.isLoading) return <div className="min-h-screen bg-[#f7f3ec] p-6 lg:p-12"><Skeleton className="mx-auto h-[70vh] max-w-7xl rounded-none bg-black/10" /></div>;
-  if (workspaceQuery.error || !patient) return <MemberAccess onVerified={() => { setIsVerified(false); workspaceQuery.refetch(); }} />;
+  if (workspaceQuery.error || !patient) return <MemberAccess onVerified={() => { setIsVerified(false); workspaceQuery.refetch(); }} onVoiceSessionStart={() => { (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = true; }} />;
 
   const isWorking = isChatPending || bookingMutation.isPending || cancellationMutation.isPending;
   const upcoming = patient.upcomingAppointment;

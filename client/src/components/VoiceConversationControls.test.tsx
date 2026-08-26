@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,6 +47,7 @@ describe("VoiceConversationControls native silence recovery", () => {
     browser.SpeechRecognition = FakeSpeechRecognition;
     browser.webkitSpeechRecognition = undefined;
     FakeSpeechRecognition.latest = null;
+    (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = false;
     Object.assign(window, { SpeechSynthesisUtterance: FakeSpeechSynthesisUtterance });
     Object.defineProperty(window, "speechSynthesis", {
       configurable: true,
@@ -83,6 +84,19 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(screen.queryByText(/Microphone permission is required/i)).toBeNull();
   });
 
+  it("reopens native listening after no speech while the hands-free session remains active", async () => {
+    const user = userEvent.setup();
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    const initialRecognition = FakeSpeechRecognition.latest;
+    await act(async () => initialRecognition?.onerror?.({ error: "no-speech" }));
+
+    await waitFor(() => expect(FakeSpeechRecognition.latest).not.toBe(initialRecognition));
+    expect(screen.getByText(/Listening · Nova sends when you pause/i)).toBeTruthy();
+    expect(screen.queryByText(/Nova could not hear that/i)).toBeNull();
+  });
+
   it("speaks a visible reply only after the member starts a voice turn with Speak to Nova", async () => {
     const user = userEvent.setup();
     const onTranscript = vi.fn();
@@ -101,6 +115,45 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
     expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Welcome to NovaCorp Health. Please share your member ID." }));
     expect(screen.queryByRole("button", { name: /hear nova/i })).toBeNull();
+  });
+
+  it("speaks Nova's verification greeting immediately when Speak to Nova begins a hands-free session", async () => {
+    const user = userEvent.setup();
+    const onAssistantVoiceMessage = vi.fn();
+    const onVoiceSessionStart = vi.fn();
+    render(<VoiceConversationControls onTranscript={vi.fn()} initialVoicePrompt="Welcome to NovaCorp Health. Please share your member ID." onAssistantVoiceMessage={onAssistantVoiceMessage} onVoiceSessionStart={onVoiceSessionStart} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+
+    expect(onVoiceSessionStart).toHaveBeenCalledTimes(1);
+    expect(onAssistantVoiceMessage).toHaveBeenCalledWith("Welcome to NovaCorp Health. Please share your member ID.");
+    expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Welcome to NovaCorp Health. Please share your member ID." }));
+  });
+
+  it("automatically resumes a persisted hands-free session with a verified-care prompt", async () => {
+    const onAssistantVoiceMessage = vi.fn();
+    (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = true;
+    render(<VoiceConversationControls onTranscript={vi.fn()} initialVoicePrompt="You are verified. What can I help you with today?" onAssistantVoiceMessage={onAssistantVoiceMessage} />);
+
+    expect(await screen.findByText(/end session/i)).toBeTruthy();
+    expect(onAssistantVoiceMessage).toHaveBeenCalledWith("You are verified. What can I help you with today?");
+    expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "You are verified. What can I help you with today?" }));
+  });
+
+  it("carries a member-initiated hands-free session from verification into the verified care prompt", async () => {
+    const user = userEvent.setup();
+    const verificationVoiceMessage = vi.fn();
+    const firstScreen = render(<VoiceConversationControls onTranscript={vi.fn()} initialVoicePrompt="Welcome to NovaCorp Health. Please share your member ID." onAssistantVoiceMessage={verificationVoiceMessage} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    expect(verificationVoiceMessage).toHaveBeenCalledWith("Welcome to NovaCorp Health. Please share your member ID.");
+    firstScreen.unmount();
+
+    const careVoiceMessage = vi.fn();
+    render(<VoiceConversationControls onTranscript={vi.fn()} initialVoicePrompt="You are verified. What can I help you with today?" onAssistantVoiceMessage={careVoiceMessage} />);
+
+    expect(await screen.findByText(/end session/i)).toBeTruthy();
+    expect(careVoiceMessage).toHaveBeenCalledWith("You are verified. What can I help you with today?");
   });
 
   it("reports Nova's spoken session-end confirmation prompt to the visible chat callback", async () => {

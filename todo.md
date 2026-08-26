@@ -69,3 +69,9 @@
 - [x] Remove separate reply-playback paths so Nova speaks replies only within the member-initiated Speak to Nova voice flow.
 - [x] Add browser-runtime conversation coverage showing a member voice turn, visible assistant reply, and gated playback behavior end to end.
 - [x] Add an integrated browser-runtime test for Speak to Nova, real transcript handoff, visible assistant reply, and voice-triggered playback without a separate replay control.
+- [x] Start Nova's spoken verification greeting immediately when the member selects Speak to Nova, without requiring the member to say hi first.
+- [x] Keep the hands-free voice session active across member authentication and transition it into the verified care workspace until the member explicitly ends the session.
+- [x] Add lifecycle tests and live validation for immediate greeting, authentication continuity, and persistent voice-session behavior.
+- [x] Verify the actual Home verified-workspace chat resumes the persisted hands-free session after authentication with a spoken care follow-up prompt.
+- [x] Add an end-to-end browser-runtime component lifecycle test covering real MemberAccess authentication into the verified Home workspace with native listening resumed, with preview verification of the entry controls.
+- [x] Resume persistent native listening after an empty-speech recognition error so a hands-free session does not silently stop.
