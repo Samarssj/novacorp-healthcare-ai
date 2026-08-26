@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { confirmsNoFurtherHelp, decideVoiceSessionResponse, shouldAutoSubmitAfterPause, shouldPromptForVoiceInactivity, VOICE_INACTIVITY_MS } from "./voiceSession";
 
 describe("voice session completion", () => {
-  it("uses a five-second inactivity threshold before checking in", () => {
-    expect(VOICE_INACTIVITY_MS).toBe(5_000);
+  it("uses a ten-second inactivity threshold before checking in", () => {
+    expect(VOICE_INACTIVITY_MS).toBe(10_000);
   });
 
   it("recognizes clear no-further-help confirmations", () => {
@@ -22,10 +22,15 @@ describe("voice session completion", () => {
     expect(shouldAutoSubmitAfterPause({ elapsedMs: 800, silenceMs: 2_000, hasDetectedSpeech: false })).toBe(false);
   });
 
-  it("checks in after five seconds only when an active voice session is not awaiting a response", () => {
-    expect(shouldPromptForVoiceInactivity({ elapsedMs: 5_000, sessionActive: true, awaitingResponse: false })).toBe(true);
-    expect(shouldPromptForVoiceInactivity({ elapsedMs: 4_999, sessionActive: true, awaitingResponse: false })).toBe(false);
-    expect(shouldPromptForVoiceInactivity({ elapsedMs: 5_000, sessionActive: true, awaitingResponse: true })).toBe(false);
+  it("checks in after ten seconds only when an active voice session is genuinely idle", () => {
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false })).toBe(true);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 9_999, sessionActive: true, awaitingResponse: false })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: true })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false, isListening: true })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false, isRecording: true })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false, isTranscribing: true })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false, isSpeaking: true })).toBe(false);
+    expect(shouldPromptForVoiceInactivity({ elapsedMs: 10_000, sessionActive: true, awaitingResponse: false, resumePending: true })).toBe(false);
   });
 
   it("maps presence answers to continuation or a confirmed session end", () => {

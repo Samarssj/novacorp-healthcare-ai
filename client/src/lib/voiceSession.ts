@@ -1,4 +1,4 @@
-export const VOICE_INACTIVITY_MS = 5_000;
+export const VOICE_INACTIVITY_MS = 10_000;
 export const VOICE_SILENCE_THRESHOLD_MS = 1_400;
 export const MINIMUM_CAPTURE_MS = 650;
 
@@ -6,8 +6,8 @@ export function shouldAutoSubmitAfterPause({ elapsedMs, silenceMs, hasDetectedSp
   return hasDetectedSpeech && elapsedMs >= MINIMUM_CAPTURE_MS && silenceMs >= VOICE_SILENCE_THRESHOLD_MS;
 }
 
-export function shouldPromptForVoiceInactivity({ elapsedMs, sessionActive, awaitingResponse }: { elapsedMs: number; sessionActive: boolean; awaitingResponse: boolean }) {
-  return sessionActive && !awaitingResponse && elapsedMs >= VOICE_INACTIVITY_MS;
+export function shouldPromptForVoiceInactivity({ elapsedMs, sessionActive, awaitingResponse, isListening = false, isRecording = false, isTranscribing = false, isSpeaking = false, resumePending = false }: { elapsedMs: number; sessionActive: boolean; awaitingResponse: boolean; isListening?: boolean; isRecording?: boolean; isTranscribing?: boolean; isSpeaking?: boolean; resumePending?: boolean }) {
+  return sessionActive && !awaitingResponse && !isListening && !isRecording && !isTranscribing && !isSpeaking && !resumePending && elapsedMs >= VOICE_INACTIVITY_MS;
 }
 
 export function confirmsNoFurtherHelp(transcript: string) {

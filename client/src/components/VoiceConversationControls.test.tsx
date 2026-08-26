@@ -14,6 +14,7 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 import { VoiceConversationControls } from "./VoiceConversationControls";
+import { VOICE_INACTIVITY_MS } from "../lib/voiceSession";
 
 type RecognitionHandlers = {
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
@@ -63,6 +64,7 @@ describe("VoiceConversationControls native silence recovery", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -84,17 +86,30 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(screen.queryByText(/Microphone permission is required/i)).toBeNull();
   });
 
-  it("reopens native listening after no speech while the hands-free session remains active", async () => {
+  it("waits ten seconds after a completed no-speech turn before asking whether the member is still there", async () => {
     const user = userEvent.setup();
     render(<VoiceConversationControls onTranscript={vi.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
-    const initialRecognition = FakeSpeechRecognition.latest;
-    await act(async () => initialRecognition?.onerror?.({ error: "no-speech" }));
+    vi.useFakeTimers();
+    await act(async () => FakeSpeechRecognition.latest?.onend?.());
 
-    await waitFor(() => expect(FakeSpeechRecognition.latest).not.toBe(initialRecognition));
+    await act(async () => vi.advanceTimersByTime(VOICE_INACTIVITY_MS - 1));
+    expect(screen.queryByText(/Nova is checking whether you need anything else/i)).toBeNull();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(screen.getByText(/Nova is checking whether you need anything else/i)).toBeTruthy();
+  });
+
+  it("never starts an inactivity check while native listening is still active", async () => {
+    const user = userEvent.setup();
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    vi.useFakeTimers();
+    await act(async () => vi.advanceTimersByTime(VOICE_INACTIVITY_MS * 2));
+
     expect(screen.getByText(/Listening · Nova sends when you pause/i)).toBeTruthy();
-    expect(screen.queryByText(/Nova could not hear that/i)).toBeNull();
+    expect(screen.queryByText(/Nova is checking whether you need anything else/i)).toBeNull();
   });
 
   it("shows an accessible microphone-level meter whenever Nova is actively listening", async () => {
@@ -143,6 +158,22 @@ describe("VoiceConversationControls native silence recovery", () => {
     expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
     expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Welcome to NovaCorp Health. Please share your member ID." }));
     expect(screen.queryByRole("button", { name: /hear nova/i })).toBeNull();
+  });
+
+  it("does not check in while native listening has reopened after Nova completes a reply", async () => {
+    const user = userEvent.setup();
+    const onTranscript = vi.fn();
+    const { rerender } = render(<VoiceConversationControls onTranscript={onTranscript} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    await act(async () => FakeSpeechRecognition.latest?.onresult?.({ results: [[{ transcript: "What are my benefits?" }]] }));
+    vi.useFakeTimers();
+    rerender(<VoiceConversationControls onTranscript={onTranscript} reply="Your plan includes eligible specialist care." />);
+    await act(async () => vi.advanceTimersByTime(250));
+
+    expect(screen.getByText(/Listening · Nova sends when you pause/i)).toBeTruthy();
+    await act(async () => vi.advanceTimersByTime(VOICE_INACTIVITY_MS * 2));
+    expect(screen.queryByText(/Nova is checking whether you need anything else/i)).toBeNull();
   });
 
   it("speaks Nova's verification greeting immediately when Speak to Nova begins a hands-free session", async () => {

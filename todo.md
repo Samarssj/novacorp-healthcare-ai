@@ -79,3 +79,9 @@
 - [x] Keep visual listening feedback accurate across native recognition, fallback recording, pauses, and session transitions.
 - [x] Add microphone-level regression coverage and validate the dynamic listening feedback in the live interface.
 - [x] Perform an interaction-focused browser-runtime active-listening exercise confirming the microphone meter appears during listening and clears when a completed listening turn ends.
+- [x] Increase the voice-session inactivity threshold from five seconds to ten seconds.
+- [x] Prevent inactivity prompts while Nova is listening, transcribing, speaking, or has just scheduled a resumed listening turn.
+- [x] Start the inactivity timer only after a completed Nova reply and confirm no premature “Are you still there?” prompt is emitted.
+- [x] Add timer lifecycle regression coverage and validate the corrected inactivity interaction.
+- [x] Verify that the ten-second check-in is armed only after a listening turn ends without speech, not while Nova is speaking or listening after a reply.
+- [x] Add reply-continuation regression coverage proving no inactivity prompt appears while Nova has reopened native listening after a reply.

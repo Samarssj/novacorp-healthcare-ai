@@ -97,6 +97,7 @@ export function VoiceConversationControls({
   const hasStartedOpeningPromptRef = useRef(false);
   const voiceSessionActiveRef = useRef(false);
   const resumeListeningTimerRef = useRef<number | null>(null);
+  const voiceRuntimeRef = useRef({ isListening: false, isRecordingFallback: false, isTranscribing: false, isSpeaking: false, awaitingPresence: false, isEndingSession: false });
   const [capability, setCapability] = useState<VoiceCapability>("checking");
   const [isListening, setIsListening] = useState(false);
   const [isRecordingFallback, setIsRecordingFallback] = useState(false);
@@ -108,6 +109,7 @@ export function VoiceConversationControls({
   const [language, setLanguage] = useState<TranscriptionLanguage>("en");
   const [remainingSeconds, setRemainingSeconds] = useState(FALLBACK_RECORDING_SECONDS);
   const [microphoneLevel, setMicrophoneLevel] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const getRecognitionConstructor = () => {
     if (typeof window === "undefined") return undefined;
@@ -175,11 +177,14 @@ export function VoiceConversationControls({
     const utterance = new SpeechSynthesisUtterance(plainText(text));
     utterance.rate = 0.96;
     utterance.onend = () => {
+      setIsSpeaking(false);
       onEnd?.();
     };
     utterance.onerror = () => {
+      setIsSpeaking(false);
       onEnd?.();
     };
+    setIsSpeaking(true);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -206,6 +211,7 @@ export function VoiceConversationControls({
   };
 
   const handleVoiceTranscript = (transcript: string) => {
+    clearInactivityTimer();
     const mode = captureModeRef.current;
     if (mode === "presence" || mode === "end-confirmation") {
       if (decideVoiceSessionResponse(transcript) === "end") {
@@ -216,7 +222,9 @@ export function VoiceConversationControls({
         setIsVoiceSessionActive(true);
         const continuation = "I’m still here. What else can I help you with?";
         onAssistantVoiceMessage?.(continuation);
-        speakText(continuation);
+        speakText(continuation, () => {
+          if (getRecognitionConstructor()) window.setTimeout(() => startNativeListening("message"), 250);
+        });
       }
       return;
     }
@@ -251,10 +259,8 @@ export function VoiceConversationControls({
         setAwaitingPresence(false);
         captureModeRef.current = "message";
         setNotice(emptySpeechRetryNotice());
-        if (voiceSessionActiveRef.current && mode === "message") {
-          clearResumeListeningTimer();
-          resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 650);
-        }
+        stopMicrophoneLevelMeter();
+        if (voiceSessionActiveRef.current && mode === "message") scheduleInactivityCheck();
         return;
       }
       setAwaitingPresence(false);
@@ -265,10 +271,7 @@ export function VoiceConversationControls({
       stopMicrophoneLevelMeter();
       if (!nativeSubmittedRef.current && mode === "message") {
         setNotice(emptySpeechRetryNotice());
-        if (voiceSessionActiveRef.current) {
-          clearResumeListeningTimer();
-          resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 650);
-        }
+        if (voiceSessionActiveRef.current) scheduleInactivityCheck();
       }
     };
     recognitionRef.current = recognition;
@@ -368,7 +371,8 @@ export function VoiceConversationControls({
   };
 
   const requestInactivityCheck = () => {
-    if (!isVoiceSessionActive || isEndingSession || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence) return;
+    const runtime = voiceRuntimeRef.current;
+    if (!shouldPromptForVoiceInactivity({ elapsedMs: VOICE_INACTIVITY_MS, sessionActive: voiceSessionActiveRef.current, awaitingResponse: runtime.awaitingPresence, isListening: runtime.isListening, isRecording: runtime.isRecordingFallback, isTranscribing: runtime.isTranscribing, isSpeaking: runtime.isSpeaking, resumePending: resumeListeningTimerRef.current !== null })) return;
     setAwaitingPresence(true);
     captureModeRef.current = "presence";
     const prompt = "Are you still there? Say yes to continue, or say no if you do not need anything else and I will end your session.";
@@ -379,6 +383,12 @@ export function VoiceConversationControls({
     } else {
       speakText(spokenPrompt);
     }
+  };
+
+  const scheduleInactivityCheck = () => {
+    clearInactivityTimer();
+    if (!voiceSessionActiveRef.current) return;
+    inactivityTimerRef.current = window.setTimeout(() => requestInactivityCheck(), VOICE_INACTIVITY_MS);
   };
 
   const requestVoiceSessionEnd = () => {
@@ -427,6 +437,10 @@ export function VoiceConversationControls({
   }, [isVoiceSessionActive]);
 
   useEffect(() => {
+    voiceRuntimeRef.current = { isListening, isRecordingFallback, isTranscribing: transcribeVoice.isPending, isSpeaking, awaitingPresence, isEndingSession };
+  }, [isListening, isRecordingFallback, transcribeVoice.isPending, isSpeaking, awaitingPresence, isEndingSession]);
+
+  useEffect(() => {
     if ((!autoStartVoiceSession && !hasPersistedHandsFreeSession()) || hasStartedOpeningPromptRef.current) return;
     hasStartedOpeningPromptRef.current = true;
     beginHandsFreeVoiceSession(initialVoicePrompt ?? "You are verified. What can I help you with today?");
@@ -450,19 +464,13 @@ export function VoiceConversationControls({
     speakText(reply, () => {
       if (voiceSessionActiveRef.current && getRecognitionConstructor()) {
         clearResumeListeningTimer();
-        resumeListeningTimerRef.current = window.setTimeout(() => startNativeListening("message"), 250);
+        resumeListeningTimerRef.current = window.setTimeout(() => {
+          resumeListeningTimerRef.current = null;
+          startNativeListening("message");
+        }, 250);
       }
     });
   }, [reply]);
-
-  useEffect(() => {
-    clearInactivityTimer();
-    if (!isVoiceSessionActive || !reply || isListening || isRecordingFallback || transcribeVoice.isPending || awaitingPresence || isEndingSession) return;
-    inactivityTimerRef.current = window.setTimeout(() => {
-      if (shouldPromptForVoiceInactivity({ elapsedMs: VOICE_INACTIVITY_MS, sessionActive: isVoiceSessionActive, awaitingResponse: awaitingPresence })) requestInactivityCheck();
-    }, VOICE_INACTIVITY_MS);
-    return clearInactivityTimer;
-  }, [reply, isVoiceSessionActive, isListening, isRecordingFallback, transcribeVoice.isPending, awaitingPresence, isEndingSession]);
 
   const isRecording = isListening || isRecordingFallback;
   const isTranscribing = transcribeVoice.isPending;
