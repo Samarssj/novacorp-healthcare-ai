@@ -90,3 +90,9 @@
 - [x] Verify the authorized demonstration member credential pairs from seeded project data and provide safe test guidance.
 - [x] Add regression coverage for first, second, and third failed verification attempts, live-agent escalation, and session termination.
 - [x] Keep failed verification count in a short-lived signed stateless cookie so three-attempt escalation cannot be bypassed by client-side state resets.
+- [x] Accept the formatted seeded demonstration mobile numbers when spoken or typed with spaces, hyphens, or no separators.
+- [x] Confirm seeded phone hashes match the shared demonstration credential pairs after normalization.
+- [x] Make failed-verification retry prompts explicitly request the member ID again and prevent a phone-like value from being mistaken for a new member ID.
+- [x] Add regression coverage for the reported spaced Avery credential pair and clear retry-state guidance.
+- [x] Normalize spoken or typed member IDs with spaces or omitted hyphens and reject phone-like values at the member-ID step.
+- [x] Verify normalized mobile values for Avery, Maya, and Jordan against all seeded phone hashes and cover each shared demonstration pair.

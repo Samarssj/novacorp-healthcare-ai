@@ -18,6 +18,17 @@ describe("AI-led member verification conversation", () => {
     expect(result.reply).toMatch(/mobile number/i);
   });
 
+  it("normalizes a spoken member ID with spaces into its canonical form", async () => {
+    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "ncg 48219" });
+    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219" });
+  });
+
+  it("does not mistake a phone-like value for a new member ID after a failed attempt", async () => {
+    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "5550 104821", failedAttempts: 1 });
+    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
+    expect(result.reply).toMatch(/not a mobile number/i);
+  });
+
   it("processes a voice transcript through the same verification state transition as typed text", async () => {
     const voiceTranscript = "NCG-48219";
     const result = await continueMemberConversation({ stage: "awaiting_member_id", message: voiceTranscript });
@@ -42,15 +53,31 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification to
     expect(result).toMatchObject({ id: "patient-avery", memberId: "NCG-48219" });
   });
 
+  it("verifies every published demonstration member and normalized mobile pair", async () => {
+    const results = await Promise.all([
+      executeMemberVerificationTool({ memberId: "NCG 48219", phoneNumber: "555010 4821" }),
+      executeMemberVerificationTool({ memberId: "NCG-91577", phoneNumber: "555 010 9157" }),
+      executeMemberVerificationTool({ memberId: "NCS76064", phoneNumber: "555-010-7606" }),
+    ]);
+    expect(results.map(result => result.id)).toEqual(["patient-avery", "patient-maya", "patient-jordan"]);
+  });
+
   it("creates a verified conversation result only after the tool accepts both credentials", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-4821" });
     expect(result).toMatchObject({ stage: "verified", toolCall: "verify_member", patient: { id: "patient-avery" } });
+  });
+
+  it("accepts the reported spaced Avery demonstration credentials", async () => {
+    const memberStep = await continueMemberConversation({ stage: "awaiting_member_id", message: "ncg 48219" });
+    const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: memberStep.memberId, message: "555010 4821" });
+    expect(result).toMatchObject({ stage: "verified", memberId: "NCG-48219", patient: { id: "patient-avery" } });
   });
 
   it("returns to member-ID collection after a failed verification tool call", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157" });
     expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
     expect(result.reply).toMatch(/couldn’t verify/i);
+    expect(result.reply).toMatch(/then I will ask for the associated mobile number/i);
   });
 
   it("escalates to a live agent after the third failed paired verification", async () => {

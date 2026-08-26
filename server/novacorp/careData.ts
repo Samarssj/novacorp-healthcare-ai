@@ -13,7 +13,13 @@ import type { AppointmentSlot, BookingConfirmation, CareWorkspace } from "@share
 import { searchPolicyEvidenceForPlan } from "./demoData";
 
 export function normalizeMemberId(value: string) {
-  return value.trim().toUpperCase().replace(/\s+/g, "");
+  const compact = value.trim().toUpperCase().replace(/[\s-]+/g, "");
+  const match = /^([A-Z]{2,4})(\d{5,})$/.exec(compact);
+  return match ? `${match[1]}-${match[2]}` : compact;
+}
+
+export function isValidMemberId(value: string) {
+  return /^[A-Z]{2,4}-\d{5,}$/.test(normalizeMemberId(value));
 }
 
 export function normalizePhoneNumber(value: string) {

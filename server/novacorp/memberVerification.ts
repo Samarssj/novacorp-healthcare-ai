@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeMemberId, normalizePhoneNumber, verifyPatientCredentials } from "./careData";
+import { isValidMemberId, normalizeMemberId, normalizePhoneNumber, verifyPatientCredentials } from "./careData";
 
 export const memberVerificationInputs = {
   verify_member: z.object({
@@ -30,8 +30,8 @@ export async function continueMemberConversation(input: { stage: MemberConversat
   const failedAttempts = Math.max(0, Math.min(input.failedAttempts ?? 0, MAX_MEMBER_VERIFICATION_ATTEMPTS - 1));
   if (input.stage === "awaiting_member_id") {
     const memberId = normalizeMemberId(input.message);
-    if (memberId.length < 5) {
-      return { stage: "awaiting_member_id", failedAttempts, reply: "I need the member ID from your NovaCorp Health card to continue." };
+    if (!isValidMemberId(memberId)) {
+      return { stage: "awaiting_member_id", failedAttempts, reply: "I need the member ID from your NovaCorp Health card to continue. Please enter the letters and numbers from the member ID, not a mobile number." };
     }
     return { stage: "awaiting_phone", memberId, failedAttempts, reply: "Thank you. Please enter the mobile number associated with that member ID." };
   }
@@ -61,7 +61,7 @@ export async function continueMemberConversation(input: { stage: MemberConversat
       return {
         stage: "awaiting_member_id",
         failedAttempts: nextFailedAttempts,
-        reply: `I couldn’t verify those details. Please re-enter your member ID to try again. You have ${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts} attempt${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts === 1 ? "" : "s"} remaining before I connect you to a live agent.`,
+        reply: `I couldn’t verify those details. Please re-enter your member ID to try again, then I will ask for the associated mobile number. You have ${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts} attempt${MAX_MEMBER_VERIFICATION_ATTEMPTS - nextFailedAttempts === 1 ? "" : "s"} remaining before I connect you to a live agent.`,
       };
     }
   }
