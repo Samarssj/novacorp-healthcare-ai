@@ -128,3 +128,4 @@
 - [x] Add MongoDB-focused regression coverage, validate the workspace and Python ADK bridge, then document the MongoDB deployment path.
 - [x] Resolve the MongoDB OAuth-user upsert field conflict and add a regression for first authenticated user synchronization.
 - [x] Configure the Render Blueprint to use a free Docker web-service instance for non-production deployment and synchronize the change to GitHub.
+- [x] Document seeded test-member credentials and representative verified-care requests in the README, then synchronize the guide to GitHub.
