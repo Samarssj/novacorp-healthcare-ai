@@ -13,7 +13,7 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 
-import { VoiceConversationControls } from "./VoiceConversationControls";
+import { NOVACORP_STOP_VOICE_CAPTURE_EVENT, VoiceConversationControls } from "./VoiceConversationControls";
 import { VOICE_INACTIVITY_MS } from "../lib/voiceSession";
 
 const signOutPatient = vi.fn();
@@ -141,6 +141,30 @@ describe("VoiceConversationControls native silence recovery", () => {
     });
 
     await waitFor(() => expect(screen.queryByRole("meter", { name: /microphone level/i })).toBeNull());
+  });
+
+  it("stops native recognition and its microphone meter when the verified workspace ends the care session", async () => {
+    const user = userEvent.setup();
+    const trackStop = vi.fn();
+    const meterStream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(meterStream);
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
+    Object.defineProperty(window, "AudioContext", { configurable: true, value: class {
+      createAnalyser() { return { fftSize: 0, getByteTimeDomainData: (samples: Uint8Array) => samples.fill(128) }; }
+      createMediaStreamSource() { return { connect: () => undefined }; }
+      close() { return Promise.resolve(); }
+    } });
+    render(<VoiceConversationControls onTranscript={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /speak to nova/i }));
+    const recognition = FakeSpeechRecognition.latest;
+    const recognitionStop = vi.spyOn(recognition!, "stop");
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalled());
+    await act(async () => window.dispatchEvent(new Event(NOVACORP_STOP_VOICE_CAPTURE_EVENT)));
+
+    expect(recognitionStop).toHaveBeenCalledTimes(1);
+    expect(trackStop).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Listening · Nova sends when you pause/i)).toBeNull();
   });
 
   it("speaks a visible reply only after the member starts a voice turn with Speak to Nova", async () => {

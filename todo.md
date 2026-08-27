@@ -129,3 +129,5 @@
 - [x] Resolve the MongoDB OAuth-user upsert field conflict and add a regression for first authenticated user synchronization.
 - [x] Configure the Render Blueprint to use a free Docker web-service instance for non-production deployment and synchronize the change to GitHub.
 - [x] Document seeded test-member credentials and representative verified-care requests in the README, then synchronize the guide to GitHub.
+- [x] Replace Nova’s sparkle/Gemini-style assistant icons with healthcare-oriented symbols and validate the refreshed member interface.
+- [x] Stop all microphone tracks, fallback recording, and native speech recognition when a member ends the care session.

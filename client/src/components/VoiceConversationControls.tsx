@@ -25,6 +25,7 @@ type Recognition = {
 type RecognitionConstructor = new () => Recognition;
 type CaptureMode = "message" | "presence" | "end-confirmation";
 type VoiceSessionWindow = typeof window & { __novaHandsFreeSession?: boolean };
+export const NOVACORP_STOP_VOICE_CAPTURE_EVENT = "novacorp:stop-voice-capture";
 
 const languageOptions = [
   { value: "en", label: "English" },
@@ -102,6 +103,7 @@ export function VoiceConversationControls({
   const hasStartedOpeningPromptRef = useRef(false);
   const voiceSessionActiveRef = useRef(false);
   const resumeListeningTimerRef = useRef<number | null>(null);
+  const discardFallbackCaptureRef = useRef(false);
   const voiceRuntimeRef = useRef({ isListening: false, isRecordingFallback: false, isTranscribing: false, isSpeaking: false, awaitingPresence: false, isEndingSession: false });
   const [capability, setCapability] = useState<VoiceCapability>("checking");
   const [isListening, setIsListening] = useState(false);
@@ -196,6 +198,32 @@ export function VoiceConversationControls({
     window.speechSynthesis.speak(utterance);
   };
 
+  const stopActiveVoiceCapture = () => {
+    clearInactivityTimer();
+    clearResumeListeningTimer();
+    nativeSubmittedRef.current = true;
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try {
+      recognition?.stop();
+    } catch {
+      // Recognition may already be stopped by the browser.
+    }
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      discardFallbackCaptureRef.current = true;
+      recorder.stop();
+    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    chunksRef.current = [];
+    stopSilenceDetector();
+    stopMicrophoneLevelMeter();
+    setIsListening(false);
+    setIsRecordingFallback(false);
+  };
+
   const signOutPatient = trpc.care.signOutPatient.useMutation({
     onSuccess: () => window.location.reload(),
     onError: () => {
@@ -205,10 +233,10 @@ export function VoiceConversationControls({
   });
 
   const endVoiceSession = () => {
-    clearInactivityTimer();
-    clearResumeListeningTimer();
     voiceSessionActiveRef.current = false;
     setPersistedHandsFreeSession(false);
+    stopActiveVoiceCapture();
+    setIsVoiceSessionActive(false);
     setIsEndingSession(true);
     setAwaitingPresence(false);
     const farewell = "Thank you for contacting NovaCorp Health. Your care session is now ending. Goodbye.";
@@ -306,6 +334,7 @@ export function VoiceConversationControls({
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      discardFallbackCaptureRef.current = false;
       const mimeType = preferredMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
@@ -316,6 +345,13 @@ export function VoiceConversationControls({
         stopSilenceDetector();
         setIsRecordingFallback(false);
         stream.getTracks().forEach(track => track.stop());
+        if (streamRef.current === stream) streamRef.current = null;
+        if (recorderRef.current === recorder) recorderRef.current = null;
+        if (discardFallbackCaptureRef.current) {
+          discardFallbackCaptureRef.current = false;
+          chunksRef.current = [];
+          return;
+        }
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         if (blob.size === 0) return setError("Nova did not receive an audio recording. Please try again.");
         if (blob.size > 8 * 1024 * 1024) return setError("The recording is too large. Keep voice messages under one minute.");
@@ -434,15 +470,23 @@ export function VoiceConversationControls({
     const hasFallbackRecording = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
     setCapability(detectVoiceCapability({ hasNativeRecognition, hasFallbackRecording }));
     return () => {
-      recognitionRef.current?.stop();
-      recorderRef.current?.stop();
-      streamRef.current?.getTracks().forEach(track => track.stop());
-      stopSilenceDetector();
-      stopMicrophoneLevelMeter();
-      clearInactivityTimer();
-      clearResumeListeningTimer();
+      stopActiveVoiceCapture();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     };
+  }, []);
+
+  useEffect(() => {
+    const stopForCompletedCareSession = () => {
+      voiceSessionActiveRef.current = false;
+      setPersistedHandsFreeSession(false);
+      setIsVoiceSessionActive(false);
+      setAwaitingPresence(false);
+      setIsEndingSession(false);
+      stopActiveVoiceCapture();
+      window.speechSynthesis?.cancel();
+    };
+    window.addEventListener(NOVACORP_STOP_VOICE_CAPTURE_EVENT, stopForCompletedCareSession);
+    return () => window.removeEventListener(NOVACORP_STOP_VOICE_CAPTURE_EVENT, stopForCompletedCareSession);
   }, []);
 
   useEffect(() => {
