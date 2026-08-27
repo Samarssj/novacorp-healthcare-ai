@@ -12,18 +12,19 @@
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?style=for-the-badge&logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
 [![Render](https://img.shields.io/badge/Render-Deploy%20ready-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/)
 
-NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-led access conversation** with a persistent multi-patient data model, policy-evidence retrieval, confirmation-gated appointments, and a guarded **Python Google ADK** runtime. The product is designed so that the server—not the model or browser—owns verification, patient identity, data access, and consequential actions.
+NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-led access conversation** with a persistent multi-patient data model, policy-evidence retrieval, confirmation-gated appointments, and a guarded **Python Google ADK** runtime. The product is designed so that the deterministic Python core—not the model or browser—owns verification, patient identity, MongoDB data access, and consequential actions.
 
 ## Product at a glance
 
 | Capability | What it delivers |
 |---|---|
 | **Conversation-first access** | Nova greets the member, requests a member ID, then asks for the associated mobile number. |
-| **Patient-scoped session** | A signed, HTTP-only session is issued only after the backend verifies both credentials. |
-| **ADK care coordination** | Python Google ADK invokes patient, evidence, availability, and summary callbacks for verified requests. |
+| **Patient-scoped session** | The Node edge issues a signed, HTTP-only session only after the deterministic Python core verifies both credentials. |
+| **Python-first care core** | Python owns member verification, registration, profile/card services, MongoDB reads, and confirmation-gated appointment transactions. |
+| **ADK care coordination** | A separately guarded Python Google ADK runtime invokes only patient, evidence, and availability read callbacks for verified requests. |
 | **Grounded coverage support** | Policy answers use retrieved evidence with document, section, page, and relevance details. |
 | **Action safeguards** | Booking and cancellation need a separate, explicit confirmation before server execution. |
-| **Stateless deployment** | Persistent data lives in MongoDB; request-scoped Python ADK sessions never become an authorization store. |
+| **Stateless deployment** | Persistent data lives in MongoDB; per-request Python core and ADK processes never become an authorization store. |
 | **Voice session control** | Members can speak naturally, see Nova’s spoken messages in the transcript, and end a voice session without leaving microphone capture active. |
 | **Healthcare-first interface** | Nova’s assistant surfaces use heart-pulse iconography rather than generic AI sparkle marks. |
 | **Natural access guidance** | Deterministic intent and credential checks protect access, while a credential-free Python ADK clarifier can phrase non-sensitive retry guidance more naturally. |
@@ -69,13 +70,13 @@ M->>C: Ask benefits or appointment question
 flowchart LR
     member[Member browser]
     web[React + TypeScript\nEditorial care workspace]
-    trpc[tRPC procedures\nTyped contracts]
+    trpc[Node tRPC edge\nTyped contracts + cookies]
     sse[SSE care stream\nLive agent activity]
-    access[Conversation controller\nCredential collection]
+    access[Python deterministic core\nMember + appointment domain]
     session[Signed patient session\nHTTP-only cookie]
-    bridge[TypeScript transport bridge\nVerified request only]
+    bridge[Node transport bridge\nVerified request only]
     router[Python Google ADK\nCoordinator + callbacks]
-    tools[Approved OpenAPI tools\nZod argument validation]
+    tools[Python read-only callbacks\nADK allowlist]
     patient[Patient specialist]
     insurance[Insurance RAG specialist]
     appointment[Appointment specialist]
@@ -87,9 +88,8 @@ flowchart LR
     web --> trpc
     web --> sse
     trpc --> access
-    access --> tools
-    tools --> db
-    access --> session
+    access --> db
+    trpc --> session
     session --> bridge
     sse --> bridge
     bridge --> router
@@ -107,10 +107,10 @@ flowchart LR
 
 | Boundary | Enforcement |
 |---|---|
-| **Identity** | The verified patient ID is resolved from the signed server session, never accepted from a model or action payload. |
-| **Tool use** | Operations are allowlisted, described by OpenAPI 3.1, and validated with Zod before execution. |
+| **Identity** | The Node edge resolves the signed session; the Python core revalidates its patient subject and never accepts a browser- or model-selected patient. |
+| **Domain operations** | Python performs deterministic verification, registration, profile/card actions, and appointment transactions. Node retains only tRPC validation, cookie handling, and forwarding. |
 | **Evidence** | A response selecting policy evidence must include matching citations; no-evidence requests produce no policy conclusion. |
-| **Appointments** | A displayed slot does not create an appointment. The member must explicitly confirm before the server calls the booking operation. |
+| **Appointments** | A displayed slot does not create an appointment. Node requires explicit confirmation and the Python core transaction rechecks it before changing a slot or appointment. |
 | **ADK callbacks** | Python `before_model` and `before_tool` callbacks require trusted patient state and reject non-allowlisted operations. |
 | **Model output** | ADK responses are checked for citations, unsupported coverage language, diagnosis, and autonomous appointment claims before the member sees them. |
 
@@ -121,9 +121,9 @@ flowchart LR
 | Layer | Technologies | Responsibility |
 |---|---|---|
 | **Experience** | React 19, TypeScript, Tailwind CSS, shadcn/ui | Responsive member conversation and care workspace. |
-| **Application boundary** | Node.js, Express 4, tRPC 11 | Typed APIs, SSE activity events, signed-session validation, and a thin bridge to Python. |
-| **Data** | MongoDB, MongoDB Node.js driver, PyMongo | Multi-patient records, medications, allergies, cited evidence, availability, and appointments. |
-| **AI runtime** | Python 3, Google ADK, Gemini 3.6 Flash | ADK agent orchestration, typed Python function callbacks, and guarded response composition. |
+| **Application boundary** | Node.js, Express 4, tRPC 11 | Browser delivery, typed request validation, SSE activity events, HTTP-only signed sessions, and request-scoped forwarding to Python. |
+| **Domain and data core** | Python 3, PyMongo, MongoDB | Deterministic member identity, profiles, cards, patient workspaces, evidence/availability reads, and MongoDB appointment transactions. |
+| **AI runtime** | Python 3, Google ADK, Gemini 3.6 Flash | Separately guarded care orchestration, typed read-only callbacks, and grounded response composition. |
 | **Contracts** | OpenAPI 3.1, Zod | Documented operations and runtime validation. |
 | **Deployment** | Docker, Render Blueprint, health endpoint, environment configuration | One stateless Node + Python service with persistent database backing. |
 
@@ -131,7 +131,7 @@ flowchart LR
 
 ## Conversation and verification contract
 
-Nova uses a deliberate two-step state machine. The sequence is predictable, inspectable, and easier to secure than interpreting a free-form identity statement.
+Nova uses a deliberate two-step state machine. The Python core owns the sequence, so it is predictable, inspectable, and easier to secure than interpreting a free-form identity statement.
 
 ```text
 awaiting_member_id
@@ -143,9 +143,22 @@ awaiting_phone
 verified → signed session issued → workspace opens
 ```
 
-The `verify_member` operation is included in the generated OpenAPI contract. It normalizes the member ID and mobile number, compares the server-side phone hash, returns a generic failure when validation does not succeed, and creates no patient session on its own. The conversation controller creates the session only after receiving a verified result.
+The `verify_member` operation is included in the generated OpenAPI contract. The deterministic Python core normalizes the member ID and mobile number, compares the MongoDB phone hash, and returns a generic failure when validation does not succeed. Node creates the signed HTTP-only session only after receiving the verified Python response; Python never accepts a patient ID supplied by the browser.
 
 Nova does not treat every unrecognized voice transcript as a mobile-number mistake. Before verification, a deterministic intent layer recognizes direct requests for a live agent, common speech-to-text variations of ending the session, and repeated unusable member-ID entries. It stops the active voice capture for terminal outcomes, ends the signed verification state, and shows the live-agent handoff after three failed access attempts. For non-terminal clarification only, the Node transport asks a dedicated **Python Google ADK** clarifier to phrase a short response from a safe intent label, stage, and remaining-attempt count. The model receives no raw speech, member ID, mobile number, patient data, or authority to choose the next security state; a deterministic safe fallback is used whenever the model is unavailable.
+
+### Access reliability checks
+
+Use the following development checks to exercise the pre-verification conversation. The result must be terminal for an explicit handoff or closing request: voice capture stops, no listening restart is scheduled, and the access interface no longer accepts another credential submission.
+
+| Test input | Expected protected outcome |
+|---|---|
+| `Connect me to living` or “connect me to a human agent” | Nova recognizes the request as live-agent handoff, ends verification, and presents the connection state. |
+| `Jesse de session`, `enges session`, “end my session,” or “I don't” | Nova recognizes a fuzzy transcript or natural closing phrase, ends verification, and stops voice capture. |
+| `6001` → `sí sí sí hermano` → `sí 69` | Each unusable member ID increments the bounded access counter. After the third entry, Nova ends the access session and directs the member to a live agent. |
+| A malformed ID that is not phone-like | Nova uses a member-ID-specific clarification rather than incorrectly describing it as a mobile-number error. |
+
+These checks affect only the pre-verification conversation. A valid existing member still enters the normal member-ID-then-mobile sequence, and a new member can instead open the enrollment page to receive their first permanent ID.
 
 ---
 
@@ -162,7 +175,7 @@ Existing verified members select **Member card & profile** from their care works
 | **Update personal details** | The server accepts profile data only after resolving the member from the signed cookie. Date of birth and postal address persist with the profile. |
 | **Report a lost card** | The server creates a `memberCardRequests` record for the signed member. A second active request returns the original reference instead of creating a duplicate. |
 
-> **Privacy boundary:** Member profile values are never provided to Gemini as authentication inputs. The model remains limited to read-only, patient-scoped care callbacks after server verification. Registration, profile edits, card issuance, and lost-card replacement requests are deterministic server operations.
+> **Privacy boundary:** Member profile values are never provided to Gemini as authentication inputs. The model remains limited to read-only, patient-scoped care callbacks after server verification. Python's deterministic core performs registration, profile edits, card issuance, lost-card replacement requests, and appointment transactions.
 
 ---
 
@@ -236,7 +249,7 @@ Never commit environment values or expose them through client-side code.
 
 ## Deploy to Render
 
-The included [`render.yaml`](render.yaml) configures a Docker-based, stateless Node + Python web service with the `/health` check. The root [`Dockerfile`](Dockerfile) installs the pinned Python ADK runtime, builds the React application, and starts the Node delivery process. Create a MongoDB Atlas deployment, configure the server-only values above, then run `pnpm seed:demo` once to create MongoDB indexes and the showcase records.
+The included [`render.yaml`](render.yaml) configures a Docker-based, stateless Node + Python web service with the `/health` check. The root [`Dockerfile`](Dockerfile) installs pinned Python dependencies, builds the React application, and starts the Node delivery process. For each domain request, Node invokes `python_adk/core_service.py` or the guarded ADK runner and waits for its result; neither process is a long-lived worker or in-memory authorization store. This remains compatible with Render’s scale-to-zero model and `PORT` health service. Create a MongoDB Atlas deployment, configure the server-only values above, then run `pnpm seed:demo` once to create MongoDB indexes and the showcase records.
 
 The project uses the official Python Google ADK agent runtime with function callbacks and lifecycle callbacks. [1] [2] [3]
 
@@ -245,16 +258,16 @@ The project uses the official Python Google ADK agent runtime with function call
 | Path | Purpose |
 |---|---|
 | `client/src/pages/Home.tsx` | Conversation-led member verification and patient workspace experience. |
-| `server/novacorp/memberVerification.ts` | Verification conversation state machine and typed `verify_member` operation. |
-| `server/novacorp/coordinator.ts` | Thin TypeScript transport bridge from the authenticated SSE route to Python. |
-| `server/novacorp/adkRunner.ts` | Request-scoped Node-to-Python execution adapter and response-contract validation. |
-| `python_adk/runner.py` | Official Python Google ADK agent, callback tools, grounded-output validation, and safe fallback. |
-| `python_adk/data_service.py` | MongoDB-backed Python ADK callback data operations and index definitions. |
-| `server/mongo.ts` | Server-only pooled MongoDB connection for deterministic verification, registration, member self-service, and appointment confirmation. |
-| `server/novacorp/careData.ts` | Deterministic MongoDB operations for registration, profile updates, digital cards, lost-card requests, and confirmation-gated appointments. |
+| `server/routers.ts` | Thin Node tRPC edge: browser input schemas, signed HTTP-only cookie lifecycle, and Python-core forwarding. |
+| `server/novacorp/pythonCore.ts` | Request-scoped Node-to-Python transport with time-bound response handling; it owns no member or appointment rules. |
+| `server/novacorp/coordinator.ts` | Thin TypeScript transport bridge from the authenticated SSE route to the separate Python ADK runtime. |
+| `server/novacorp/adkRunner.ts` | Request-scoped Node-to-Python ADK execution adapter and response-contract validation. |
+| `python_adk/core_service.py` | Deterministic Python application core for verification, member lifecycle, cards, workspaces, and confirmed appointment transactions. |
+| `python_adk/runner.py` | Official Python Google ADK agent, read-only callback tools, grounded-output validation, and safe fallback. |
+| `python_adk/data_service.py` | Read-only MongoDB data service used solely by guarded Python ADK callbacks. |
 | `client/src/pages/MemberRegistration.tsx` | Public secure enrollment form that issues a permanent healthcare ID. |
 | `client/src/pages/MemberSelfService.tsx` | Signed-session member card, lost-card replacement, and profile-update experience. |
-| `server/novacorp/tools.ts` | Patient-scoped approved operation dispatcher. |
+| `server/novacorp/tools.ts` | Edge-only Zod schemas for explicitly confirmed transport operations. |
 | `server/novacorp/openapi.ts` | OpenAPI 3.1 contract and compatible model-tool definitions. |
 | `docs/deployment.md` | External hosting, database, and Gemini deployment guide. |
 

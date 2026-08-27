@@ -15,8 +15,6 @@ services:
         value: novacorp_healthcare
       - key: JWT_SECRET
         generateValue: true
-      - key: BUILT_IN_FORGE_API_URL
-        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: NOVACORP_ADK_MODEL

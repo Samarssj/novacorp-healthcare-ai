@@ -1,175 +1,46 @@
-import { describe, expect, it } from "vitest";
-import { appRouter } from "../routers";
-import type { TrpcContext } from "../_core/context";
-import { continueMemberConversation, executeMemberVerificationTool } from "./memberVerification";
-import { createPatientSession, createVerificationAttemptToken, PATIENT_SESSION_COOKIE, VERIFICATION_ATTEMPTS_COOKIE } from "./session";
+import { afterEach, describe, expect, it } from "vitest";
+import { runPythonCore } from "./pythonCore";
 
-describe("AI-led member verification conversation", () => {
-  it("exposes the greeting-first conversation procedure through the care router", async () => {
-    const caller = appRouter.createCaller({} as TrpcContext);
-    const greeting = await caller.care.beginVerificationConversation();
-    expect(greeting).toMatchObject({ stage: "awaiting_member_id" });
-    expect(greeting.reply).toMatch(/member ID/i);
-  });
+type ConversationResult = { stage: string; reply: string; failedAttempts: number; memberId?: string; patient?: { id: string; memberId: string } };
 
-  it("collects the member ID before requesting a mobile number", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: " ncg-48219 " });
-    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219" });
-    expect(result.reply).toMatch(/mobile number/i);
-  });
+const originalOfflineMode = process.env.NOVACORP_ADK_OFFLINE;
 
-  it("normalizes a spoken member ID with spaces into its canonical form", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "ncg 48219" });
-    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219" });
-  });
-
-  it("does not mistake a phone-like value for a new member ID after a failed attempt", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "5550 104821", failedAttempts: 1 });
-    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
-    expect(result.reply).toMatch(/member id/i);
-    expect(result.reply).not.toMatch(/not a mobile number/i);
-  });
-
-  it("counts unusable member-ID entries and escalates after the third failed access attempt", async () => {
-    const first = await continueMemberConversation({ stage: "awaiting_member_id", message: "6001" });
-    const second = await continueMemberConversation({ stage: "awaiting_member_id", message: "sí sí sí hermano", failedAttempts: first.failedAttempts });
-    const third = await continueMemberConversation({ stage: "awaiting_member_id", message: "sí 69", failedAttempts: second.failedAttempts });
-    expect(first).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
-    expect(first.reply).toMatch(/didn.t catch/i);
-    expect(second).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
-    expect(third).toMatchObject({ stage: "escalated", failedAttempts: 3 });
-    expect(third.reply).toMatch(/live agent/i);
-  });
-
-  it("honors a direct live-agent request before credentials are collected", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "Connect me to living" });
-    expect(result).toMatchObject({ stage: "escalated", failedAttempts: 0 });
-    expect(result.reply).toMatch(/live agent/i);
-  });
-
-  it.each(["Jesse de session", "enges session", "I don't"])("ends verification for fuzzy spoken closing %s", async message => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message });
-    expect(result).toMatchObject({ stage: "ended", failedAttempts: 0 });
-    expect(result.reply).toMatch(/verification session/i);
-  });
-
-  it("ends a pre-verification conversation courteously when the member says they do not want anything", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "I don't want anything", failedAttempts: 2 });
-    expect(result).toMatchObject({ stage: "ended", failedAttempts: 0 });
-    expect(result.reply).toMatch(/end this verification session/i);
-  });
-
-  it("processes a voice transcript through the same verification state transition as typed text", async () => {
-    const voiceTranscript = "NCG-48219";
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: voiceTranscript });
-    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219" });
-  });
-
-  it("does not verify a member until both credentials have been supplied", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "NCG-48219" });
-    expect(result.toolCall).toBeUndefined();
-  });
-
-  it("preserves member-ID then mobile-number collection before each verification tool call", async () => {
-    const memberIdStep = await continueMemberConversation({ stage: "awaiting_member_id", message: "NCG-48219" });
-    expect(memberIdStep).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 0 });
-    expect(memberIdStep.toolCall).toBeUndefined();
-  });
+afterEach(() => {
+  if (originalOfflineMode === undefined) delete process.env.NOVACORP_ADK_OFFLINE;
+  else process.env.NOVACORP_ADK_OFFLINE = originalOfflineMode;
 });
 
-describe.runIf(Boolean(process.env.MONGODB_URI))("AI-led member verification tool handoff", () => {
-  it("calls the typed backend verification tool and returns the verified member", async () => {
-    const result = await executeMemberVerificationTool({ memberId: "NCG-48219", phoneNumber: "555-010-4821" });
-    expect(result).toMatchObject({ id: "patient-avery", memberId: "NCG-48219" });
-  }, 20_000);
-
-  it("verifies every published demonstration member and normalized mobile pair", async () => {
-    const results = await Promise.all([
-      executeMemberVerificationTool({ memberId: "NCG 48219", phoneNumber: "555010 4821" }),
-      executeMemberVerificationTool({ memberId: "NCG-91577", phoneNumber: "555 010 9157" }),
-      executeMemberVerificationTool({ memberId: "NCS76064", phoneNumber: "555-010-7606" }),
-    ]);
-    expect(results.map(result => result.id)).toEqual(["patient-avery", "patient-maya", "patient-jordan"]);
+describe.runIf(Boolean(process.env.MONGODB_URI))("Python-first member verification transport", () => {
+  it("forwards normalized dual credential verification to the deterministic Python core", async () => {
+    const result = await runPythonCore<ConversationResult>("continue_member_conversation", {
+      stage: "awaiting_member_id", message: " ncg 48219 ", failedAttempts: 0,
+    });
+    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 0 });
+    const verified = await runPythonCore<ConversationResult>("continue_member_conversation", {
+      stage: "awaiting_phone", memberId: result.memberId, message: "555010 4821", failedAttempts: 0,
+    });
+    expect(verified).toMatchObject({ stage: "verified", patient: { id: "patient-avery", memberId: "NCG-48219" } });
   }, 30_000);
 
-  it("creates a verified conversation result only after the tool accepts both credentials", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-4821" });
-    expect(result).toMatchObject({ stage: "verified", toolCall: "verify_member", patient: { id: "patient-avery" } });
-  });
+  it("forwards terminal live-agent and fuzzy closing outcomes without invoking patient data", async () => {
+    process.env.NOVACORP_ADK_OFFLINE = "1";
+    const handoff = await runPythonCore<ConversationResult>("continue_member_conversation", {
+      stage: "awaiting_member_id", message: "Connect me to living", failedAttempts: 0,
+    });
+    const ending = await runPythonCore<ConversationResult>("continue_member_conversation", {
+      stage: "awaiting_member_id", message: "Jesse de session", failedAttempts: 0,
+    });
+    expect(handoff).toMatchObject({ stage: "escalated", failedAttempts: 0 });
+    expect(ending).toMatchObject({ stage: "ended", failedAttempts: 0 });
+  }, 30_000);
 
-  it("accepts the reported spaced Avery demonstration credentials", async () => {
-    const memberStep = await continueMemberConversation({ stage: "awaiting_member_id", message: "ncg 48219" });
-    const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: memberStep.memberId, message: "555010 4821" });
-    expect(result).toMatchObject({ stage: "verified", memberId: "NCG-48219", patient: { id: "patient-avery" } });
-  });
-
-  it("retains the captured member ID and requests only a corrected mobile number after a failed verification tool call", async () => {
-    const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157" });
-    expect(result).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 1 });
-    expect(result.reply).toMatch(/couldn’t verify/i);
-    expect(result.reply).toMatch(/mobile number/i);
-    expect(result.reply).not.toMatch(/re-enter your member id/i);
-  });
-
-  it("escalates to a live agent after the third failed paired verification", async () => {
-    const first = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: 0 });
-    const second = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: first.failedAttempts });
-    const third = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: second.failedAttempts });
-    expect(first).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 1 });
-    expect(second).toMatchObject({ stage: "awaiting_phone", memberId: "NCG-48219", failedAttempts: 2 });
+  it("forwards bounded invalid-ID escalation from the Python core", async () => {
+    process.env.NOVACORP_ADK_OFFLINE = "1";
+    const first = await runPythonCore<ConversationResult>("continue_member_conversation", { stage: "awaiting_member_id", message: "6001", failedAttempts: 0 });
+    const second = await runPythonCore<ConversationResult>("continue_member_conversation", { stage: "awaiting_member_id", message: "sí sí sí hermano", failedAttempts: first.failedAttempts });
+    const third = await runPythonCore<ConversationResult>("continue_member_conversation", { stage: "awaiting_member_id", message: "sí 69", failedAttempts: second.failedAttempts });
+    expect(first).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
+    expect(second).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
     expect(third).toMatchObject({ stage: "escalated", failedAttempts: 3 });
-    expect(third.reply).toMatch(/live agent/i);
-  });
-
-  it("uses the verified session for a positive patient-scoped workspace request", async () => {
-    const token = await createPatientSession("patient-avery");
-    const caller = appRouter.createCaller({ req: { headers: { cookie: `${PATIENT_SESSION_COOKIE}=${token}` } } } as TrpcContext);
-    const workspace = await caller.care.getWorkspace();
-    expect(workspace.patient).toMatchObject({ id: "patient-avery", memberId: "NCG-48219" });
-  });
-});
-
-describe("care-message session boundary", () => {
-  it("rejects a transcript-equivalent care request without a verified patient session", async () => {
-    const caller = appRouter.createCaller({ req: { headers: { cookie: "" } } } as TrpcContext);
-    await expect(caller.care.sendMessage({ message: "What is my specialist copay?" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-  });
-
-  it("rejects profile, card, and replacement actions without a verified patient session", async () => {
-    const caller = appRouter.createCaller({ req: { headers: { cookie: "" } } } as TrpcContext);
-    const profile = { name: "Taylor Morgan", dateOfBirth: "1990-10-21", phoneNumber: "555-016-7700", address: { line1: "125 River Road", city: "Portland", state: "OR", postalCode: "97201", country: "United States" } };
-    await expect(caller.care.updateMemberProfile(profile)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(caller.care.createMemberCard()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(caller.care.requestLostMemberCard()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-  });
-});
-
-describe("patient session ending", () => {
-  it("clears the verified patient cookie through the dedicated care sign-out operation", async () => {
-    const cleared: Array<{ name: string; options: Record<string, unknown> }> = [];
-    const caller = appRouter.createCaller({
-      req: { protocol: "https", headers: {} },
-      res: { clearCookie: (name: string, options: Record<string, unknown>) => cleared.push({ name, options }) },
-    } as TrpcContext);
-    await expect(caller.care.signOutPatient()).resolves.toEqual({ success: true });
-    expect(cleared).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: PATIENT_SESSION_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
-      expect.objectContaining({ name: VERIFICATION_ATTEMPTS_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
-    ]));
-  });
-
-  it.runIf(Boolean(process.env.MONGODB_URI))("uses the signed failure counter to escalate even if a client resets its reported attempt count", async () => {
-    const cleared: Array<{ name: string; options: Record<string, unknown> }> = [];
-    const attemptsToken = await createVerificationAttemptToken(2);
-    const caller = appRouter.createCaller({
-      req: { protocol: "https", headers: { cookie: `${VERIFICATION_ATTEMPTS_COOKIE}=${attemptsToken}` } },
-      res: { clearCookie: (name: string, options: Record<string, unknown>) => cleared.push({ name, options }) },
-    } as TrpcContext);
-    const result = await caller.care.continueVerificationConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-9157", failedAttempts: 0 });
-    expect(result).toMatchObject({ stage: "escalated", failedAttempts: 3 });
-    expect(cleared).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: PATIENT_SESSION_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
-      expect.objectContaining({ name: VERIFICATION_ATTEMPTS_COOKIE, options: expect.objectContaining({ maxAge: -1 }) }),
-    ]));
-  });
+  }, 30_000);
 });

@@ -141,3 +141,11 @@
 - [x] Recognize explicit live-agent requests and end-session phrases, including common speech-transcription variations, before member verification completes.
 - [x] Count repeated invalid member-ID entries toward a bounded pre-verification escalation path, then stop voice capture and direct the member to a live agent after three failures.
 - [x] Use the Python ADK response boundary for non-sensitive pre-verification clarification wording, while keeping credential collection, session creation, exits, and escalation deterministic.
+- [x] Finalize the README operational checklist for member enrollment, profile updates, card replacement, hybrid access handling, and deployment synchronization.
+- [x] Define a validated Node-to-Python service contract for member verification, workspace reads, registration, profile/card operations, and confirmed appointments.
+- [x] Move deterministic MongoDB member verification, workspace, registration, profile, card, and lost-card request business operations from TypeScript to Python.
+- [x] Move confirmation-gated appointment booking and cancellation transactions from TypeScript to Python while retaining Node signed-session and confirmation forwarding.
+- [x] Reduce the Node layer to browser transport, request validation, signed-cookie handling, SSE framing, and Python-service forwarding.
+- [x] Preserve Python Google ADK as a separately guarded, read-only care-orchestration layer after the Python-core migration.
+- [x] Replace business-core tests with Python coverage, validate all transport and security boundaries, and document the Python-first ownership split.
+- [x] Verify the Python-first migration preserves the existing Render Docker build, `PORT` health service, request-scoped execution, and server-only secret handling.

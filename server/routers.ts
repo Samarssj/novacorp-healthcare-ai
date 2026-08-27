@@ -5,14 +5,16 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { getOrCreateMemberCard, getPatientWorkspace, registerMember, requestLostMemberCard, updateMemberProfile, verifyPatientCredentials } from "./novacorp/careData";
+import type { BookingConfirmation, CareWorkspace, LostMemberCardRequest, MemberCard } from "@shared/novacorp";
 import { runCoordinator } from "./novacorp/coordinator";
-import { continueMemberConversation } from "./novacorp/memberVerification";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
+import { runPythonCore } from "./novacorp/pythonCore";
 import { createPatientSession, createVerificationAttemptToken, PATIENT_SESSION_COOKIE, resolvePatientSession, resolveVerificationAttemptToken, VERIFICATION_ATTEMPTS_COOKIE } from "./novacorp/session";
-import { executeApprovedTool } from "./novacorp/tools";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { runVoiceFallback, voiceFallbackInput } from "./novacorp/voiceFallback";
+
+type VerifiedPatient = { id: string; name: string; memberId: string; plan: string };
+type MemberConversationResult = { stage: "awaiting_member_id" | "awaiting_phone" | "verified" | "escalated" | "ended"; reply: string; failedAttempts: number; memberId?: string; patient?: VerifiedPatient; toolCall?: "verify_member" };
 
 const memberVerificationSchema = z.object({
   memberId: z.string().trim().min(5).max(64),
@@ -73,7 +75,7 @@ export const appRouter = router({
     continueVerificationConversation: publicProcedure.input(memberConversationSchema).mutation(async ({ input, ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       const previousAttempts = await resolveVerificationAttemptToken(parse(ctx.req.headers.cookie ?? "")[VERIFICATION_ATTEMPTS_COOKIE]);
-      const result = await continueMemberConversation({ ...input, failedAttempts: previousAttempts });
+      const result = await runPythonCore<MemberConversationResult>("continue_member_conversation", { ...input, failedAttempts: previousAttempts });
       if (result.stage === "verified" && result.patient) {
         const token = await createPatientSession(result.patient.id);
         ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
@@ -95,13 +97,13 @@ export const appRouter = router({
       return { text: result.text.trim(), language: result.language };
     }),
     verifyMember: publicProcedure.input(memberVerificationSchema).mutation(async ({ input, ctx }) => {
-      const patient = await verifyPatientCredentials(input.memberId, input.phoneNumber);
+      const patient = await runPythonCore<CareWorkspace["patient"]>("verify_member", input);
       const token = await createPatientSession(patient.id);
       ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
       return { patient: { name: patient.name, memberId: patient.memberId, plan: patient.plan } };
     }),
     registerMember: publicProcedure.input(memberProfileSchema).mutation(async ({ input, ctx }) => {
-      const patient = await registerMember(input);
+      const patient = await runPythonCore<CareWorkspace["patient"]>("register_member", input);
       const token = await createPatientSession(patient.id);
       ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
       return { patient };
@@ -114,19 +116,19 @@ export const appRouter = router({
     }),
     getWorkspace: publicProcedure.query(async ({ ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return getPatientWorkspace(patientId);
+      return runPythonCore<CareWorkspace>("get_patient_workspace", { patientId });
     }),
     updateMemberProfile: publicProcedure.input(memberProfileSchema).mutation(async ({ input, ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return updateMemberProfile(patientId, input);
+      return runPythonCore<CareWorkspace["patient"]>("update_member_profile", { patientId, ...input });
     }),
     createMemberCard: publicProcedure.mutation(async ({ ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return getOrCreateMemberCard(patientId);
+      return runPythonCore<MemberCard>("get_or_create_member_card", { patientId });
     }),
     requestLostMemberCard: publicProcedure.mutation(async ({ ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return requestLostMemberCard(patientId);
+      return runPythonCore<LostMemberCardRequest>("request_lost_member_card", { patientId });
     }),
     sendMessage: publicProcedure.input(z.object({ message: z.string().trim().min(1).max(1600) }).strict()).mutation(async ({ input, ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
@@ -134,11 +136,11 @@ export const appRouter = router({
     }),
     confirmBooking: publicProcedure.input(z.object({ slotId: z.string().trim().min(1), confirmed: z.literal(true) }).strict()).mutation(async ({ input, ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return executeApprovedTool("book_appointment", { patientId, ...input });
+      return runPythonCore<BookingConfirmation>("book_confirmed_appointment", { patientId, ...input });
     }),
     confirmCancellation: publicProcedure.input(z.object({ appointmentId: z.string().trim().min(1), confirmed: z.literal(true) }).strict()).mutation(async ({ input, ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
-      return executeApprovedTool("cancel_appointment", { patientId, ...input });
+      return runPythonCore<{ appointmentId: string; confirmationCode: string; status: "cancelled"; clinician: string; specialty: string; dateLabel: string; timeLabel: string }>("cancel_confirmed_appointment", { patientId, ...input });
     }),
     openApi: publicProcedure.query(() => novacorpOpenApi),
     approvedTools: publicProcedure.query(() => approvedModelTools),
