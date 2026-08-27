@@ -2,6 +2,7 @@ services:
   - type: web
     name: novacorp-healthcare-ai
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
