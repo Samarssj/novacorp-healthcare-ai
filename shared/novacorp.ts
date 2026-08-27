@@ -44,6 +44,8 @@ export type CareWorkspace = {
     planStatus: "Active" | "Inactive";
     specialistCopay: string;
     deductibleRemaining: string;
+    address: PostalAddress;
+    memberCard?: MemberCard;
     medications: Array<{ name: string; dosage: string }>;
     allergies: string[];
     upcomingAppointment?: {
@@ -57,6 +59,27 @@ export type CareWorkspace = {
   policyEvidence: PolicyEvidence[];
   appointmentSlots: AppointmentSlot[];
   initialActivity: AgentActivity[];
+};
+
+export type PostalAddress = {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
+export type MemberCard = {
+  cardNumber: string;
+  issuedAt: string;
+  status: "active";
+};
+
+export type LostMemberCardRequest = {
+  reference: string;
+  status: "submitted";
+  submittedAt: string;
 };
 
 export type CoordinatorResult = {

@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import os
 from types import SimpleNamespace
 
 import runner
@@ -69,6 +70,28 @@ class NovaCorpAdkRuntimeTests(unittest.TestCase):
             runner.run_adk = original_adk
         self.assertEqual(result["coordinatorMode"], "safe-fallback")
         self.assertIn("NovaCorp Gold Plus Member Handbook", result["reply"])
+
+    def test_access_clarifier_never_uses_credentials_or_patient_data_and_has_a_safe_fallback(self):
+        reply = runner.access_fallback_reply("invalid_member_id", 2)
+        self.assertTrue(runner.access_reply_is_safe(reply, "invalid_member_id", 2))
+        self.assertFalse(runner.access_reply_is_safe("Your patient policy says you are covered.", "invalid_member_id", 2))
+        result = asyncio.run(runner.compose_access_reply({"intent": "live_agent", "stage": "escalated"}))
+        self.assertIn("live agent", result["reply"].lower())
+        self.assertEqual(result["mode"], "deterministic")
+
+    def test_access_clarifier_accepts_only_safe_labels_and_never_needs_patient_context(self):
+        original_offline = os.environ.get("NOVACORP_ADK_OFFLINE")
+        os.environ["NOVACORP_ADK_OFFLINE"] = "1"
+        try:
+            result = asyncio.run(runner.compose_access_reply({"intent": "invalid_phone", "stage": "awaiting_phone", "remainingAttempts": 1}))
+            self.assertIn("1 attempt", result["reply"].lower())
+            with self.assertRaises(ValueError):
+                asyncio.run(runner.compose_access_reply({"intent": "patient_summary", "stage": "awaiting_phone"}))
+        finally:
+            if original_offline is None:
+                os.environ.pop("NOVACORP_ADK_OFFLINE", None)
+            else:
+                os.environ["NOVACORP_ADK_OFFLINE"] = original_offline
 
 
 if __name__ == "__main__":

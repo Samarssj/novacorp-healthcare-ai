@@ -26,6 +26,11 @@ NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-l
 | **Stateless deployment** | Persistent data lives in MongoDB; request-scoped Python ADK sessions never become an authorization store. |
 | **Voice session control** | Members can speak naturally, see Nova’s spoken messages in the transcript, and end a voice session without leaving microphone capture active. |
 | **Healthcare-first interface** | Nova’s assistant surfaces use heart-pulse iconography rather than generic AI sparkle marks. |
+| **Natural access guidance** | Deterministic intent and credential checks protect access, while a credential-free Python ADK clarifier can phrase non-sensitive retry guidance more naturally. |
+| **Permanent member enrollment** | New members provide name, date of birth, mobile number, and postal address; MongoDB stores the profile and issues a unique `NCM-` member ID. |
+| **Member card services** | Every registered member receives a persistent digital healthcare ID card, while verified existing members can create one on demand. |
+| **Self-service profile care** | Both newly registered and existing verified members can update their name, mobile number, date of birth, and postal address. |
+| **Lost-card replacement** | A verified member can submit a persistent replacement request; a pending request is reused rather than duplicated. |
 
 ---
 
@@ -38,8 +43,8 @@ sequenceDiagram
     participant N as Nova conversation
     participant V as verify_member tool
     participant D as Patient database
-    participant S as Signed session
-    participant C as Care coordinator
+participant S as Signed session
+participant C as Care coordinator
 
     M->>N: Opens private care conversation
     N->>M: Greets member and requests member ID
@@ -51,7 +56,7 @@ sequenceDiagram
     D-->>V: Verified patient record
     V-->>S: Create 30-minute signed session
     S-->>M: Open patient-scoped workspace
-    M->>C: Ask benefits or appointment question
+M->>C: Ask benefits or appointment question
 ```
 
 > **Trust boundary:** Nova guides the conversation, but the server validates credentials and creates the session. Gemini never authenticates a member, chooses a patient, or directly executes an appointment action.
@@ -140,6 +145,25 @@ verified → signed session issued → workspace opens
 
 The `verify_member` operation is included in the generated OpenAPI contract. It normalizes the member ID and mobile number, compares the server-side phone hash, returns a generic failure when validation does not succeed, and creates no patient session on its own. The conversation controller creates the session only after receiving a verified result.
 
+Nova does not treat every unrecognized voice transcript as a mobile-number mistake. Before verification, a deterministic intent layer recognizes direct requests for a live agent, common speech-to-text variations of ending the session, and repeated unusable member-ID entries. It stops the active voice capture for terminal outcomes, ends the signed verification state, and shows the live-agent handoff after three failed access attempts. For non-terminal clarification only, the Node transport asks a dedicated **Python Google ADK** clarifier to phrase a short response from a safe intent label, stage, and remaining-attempt count. The model receives no raw speech, member ID, mobile number, patient data, or authority to choose the next security state; a deterministic safe fallback is used whenever the model is unavailable.
+
+---
+
+## Member enrollment and self-service
+
+New visitors can select **New to NovaCorp? Create a healthcare ID** from the member-access conversation. Enrollment collects the member’s **full name, date of birth, mobile number, postal address**, and optional second address line. The server normalizes and hashes the submitted mobile number, writes the profile to the `patients` MongoDB collection, generates a collision-resistant numeric `NCM-` member ID, issues a digital card, and opens the signed member session.
+
+Existing verified members select **Member card & profile** from their care workspace to use the same self-service capability. Profile edits always resolve the member ID from the signed HTTP-only patient session; clients cannot select another record or pass a patient ID in an update request. A mobile-number update replaces the stored server-side hash, so subsequent dual verification requires the updated number.
+
+| Member action | Authorization and persistence rule |
+|---|---|
+| **Register** | Public enrollment validates the complete form and immediately creates a signed session for the newly created patient record. |
+| **View or create a card** | The card endpoint requires a verified session; cards have a stable member-card number and an active status. |
+| **Update personal details** | The server accepts profile data only after resolving the member from the signed cookie. Date of birth and postal address persist with the profile. |
+| **Report a lost card** | The server creates a `memberCardRequests` record for the signed member. A second active request returns the original reference instead of creating a duplicate. |
+
+> **Privacy boundary:** Member profile values are never provided to Gemini as authentication inputs. The model remains limited to read-only, patient-scoped care callbacks after server verification. Registration, profile edits, card issuance, and lost-card replacement requests are deterministic server operations.
+
 ---
 
 ## Quick start
@@ -157,6 +181,8 @@ pnpm dev
 # Configure MONGODB_URI in the server environment, then initialize indexes and showcase records.
 pnpm seed:demo
 ```
+
+The seed applies the member-card request indexes and backfills the showcase profiles with postal addresses and ISO-formatted dates of birth. Use it only for development or staging databases; production member data should enter through the secured enrollment or approved administrative import process.
 
 ### 3. Validate
 
@@ -224,7 +250,10 @@ The project uses the official Python Google ADK agent runtime with function call
 | `server/novacorp/adkRunner.ts` | Request-scoped Node-to-Python execution adapter and response-contract validation. |
 | `python_adk/runner.py` | Official Python Google ADK agent, callback tools, grounded-output validation, and safe fallback. |
 | `python_adk/data_service.py` | MongoDB-backed Python ADK callback data operations and index definitions. |
-| `server/mongo.ts` | Server-only pooled MongoDB connection for deterministic verification and appointment confirmation. |
+| `server/mongo.ts` | Server-only pooled MongoDB connection for deterministic verification, registration, member self-service, and appointment confirmation. |
+| `server/novacorp/careData.ts` | Deterministic MongoDB operations for registration, profile updates, digital cards, lost-card requests, and confirmation-gated appointments. |
+| `client/src/pages/MemberRegistration.tsx` | Public secure enrollment form that issues a permanent healthcare ID. |
+| `client/src/pages/MemberSelfService.tsx` | Signed-session member card, lost-card replacement, and profile-update experience. |
 | `server/novacorp/tools.ts` | Patient-scoped approved operation dispatcher. |
 | `server/novacorp/openapi.ts` | OpenAPI 3.1 contract and compatible model-tool definitions. |
 | `docs/deployment.md` | External hosting, database, and Gemini deployment guide. |

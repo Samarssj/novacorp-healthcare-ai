@@ -52,6 +52,7 @@ export const demoWorkspace: CareWorkspace = {
     planStatus: "Active",
     specialistCopay: "$55",
     deductibleRemaining: "$245",
+    address: { line1: "18 North Harbor Way", city: "Riverton", state: "CA", postalCode: "90210", country: "United States" },
     medications: [
       { name: "Lisinopril", dosage: "10 mg · once daily" },
       { name: "Vitamin D3", dosage: "1,000 IU · once daily" },

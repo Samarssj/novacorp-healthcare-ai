@@ -40,6 +40,8 @@ def now() -> datetime:
 def ensure_indexes(db) -> None:
     db.patients.create_index("memberId", unique=True, name="patients_member_id_unique")
     db.patients.create_index("phoneHash", name="patients_phone_hash")
+    db.memberCardRequests.create_index([("patientId", 1), ("status", 1)], unique=True, partialFilterExpression={"status": "submitted"}, name="card_requests_patient_submitted_unique")
+    db.memberCardRequests.create_index("submittedAt", name="card_requests_submitted_at")
     db.appointmentSlots.create_index([("specialty", 1), ("status", 1)], name="slots_specialty_status")
     db.patientAppointments.create_index([("patientId", 1), ("status", 1)], name="appointments_patient_status")
     db.patientAppointments.create_index("slotId", unique=True, sparse=True, name="appointments_slot_unique")

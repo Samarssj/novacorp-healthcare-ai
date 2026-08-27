@@ -66,6 +66,19 @@ describe("MemberAccess live-agent escalation", () => {
     expect(await screen.findByText(/Connecting you to a live agent/i)).toBeTruthy();
   });
 
+  it("stops active voice capture as soon as an escalated or ended verification response is accepted", async () => {
+    const user = userEvent.setup();
+    const stopCapture = vi.fn();
+    window.addEventListener("novacorp:stop-voice-capture", stopCapture);
+    try {
+      render(<MemberAccess onVerified={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: /submit third failed verification/i }));
+      expect(stopCapture).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("novacorp:stop-voice-capture", stopCapture);
+    }
+  });
+
   it("keeps the courteous verification-exit farewell mounted until speech finishes, then clears hands-free state", async () => {
     const user = userEvent.setup();
     (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = true;

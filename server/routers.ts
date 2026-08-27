@@ -5,7 +5,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { getPatientWorkspace, verifyPatientCredentials } from "./novacorp/careData";
+import { getOrCreateMemberCard, getPatientWorkspace, registerMember, requestLostMemberCard, updateMemberProfile, verifyPatientCredentials } from "./novacorp/careData";
 import { runCoordinator } from "./novacorp/coordinator";
 import { continueMemberConversation } from "./novacorp/memberVerification";
 import { approvedModelTools, novacorpOpenApi } from "./novacorp/openapi";
@@ -24,6 +24,25 @@ const memberConversationSchema = z.object({
   message: z.string().trim().min(1).max(160),
   memberId: z.string().trim().min(5).max(64).optional(),
   failedAttempts: z.number().int().min(0).max(2).optional(),
+}).strict();
+
+const postalAddressSchema = z.object({
+  line1: z.string().trim().min(3).max(120),
+  line2: z.string().trim().max(120).optional(),
+  city: z.string().trim().min(2).max(80),
+  state: z.string().trim().min(2).max(80),
+  postalCode: z.string().trim().min(3).max(16),
+  country: z.string().trim().min(2).max(80),
+}).strict();
+
+const memberProfileSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  dateOfBirth: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date of birth in YYYY-MM-DD format.").refine(value => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.valueOf()) && date <= new Date();
+  }, "Enter a valid date of birth."),
+  phoneNumber: z.string().trim().min(8).max(32),
+  address: postalAddressSchema,
 }).strict();
 
 async function requireVerifiedPatient(cookieHeader: string | undefined) {
@@ -81,6 +100,12 @@ export const appRouter = router({
       ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
       return { patient: { name: patient.name, memberId: patient.memberId, plan: patient.plan } };
     }),
+    registerMember: publicProcedure.input(memberProfileSchema).mutation(async ({ input, ctx }) => {
+      const patient = await registerMember(input);
+      const token = await createPatientSession(patient.id);
+      ctx.res.cookie(PATIENT_SESSION_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 60 * 1000 });
+      return { patient };
+    }),
     signOutPatient: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = { ...getSessionCookieOptions(ctx.req), maxAge: -1 };
       ctx.res.clearCookie(PATIENT_SESSION_COOKIE, cookieOptions);
@@ -90,6 +115,18 @@ export const appRouter = router({
     getWorkspace: publicProcedure.query(async ({ ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
       return getPatientWorkspace(patientId);
+    }),
+    updateMemberProfile: publicProcedure.input(memberProfileSchema).mutation(async ({ input, ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return updateMemberProfile(patientId, input);
+    }),
+    createMemberCard: publicProcedure.mutation(async ({ ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return getOrCreateMemberCard(patientId);
+    }),
+    requestLostMemberCard: publicProcedure.mutation(async ({ ctx }) => {
+      const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);
+      return requestLostMemberCard(patientId);
     }),
     sendMessage: publicProcedure.input(z.object({ message: z.string().trim().min(1).max(1600) }).strict()).mutation(async ({ input, ctx }) => {
       const patientId = await requireVerifiedPatient(ctx.req.headers.cookie);

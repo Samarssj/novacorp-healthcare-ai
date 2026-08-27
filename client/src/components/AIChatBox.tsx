@@ -350,6 +350,8 @@ export function AIChatBox({
         className="mx-4 mt-2"
       />
 
+      {suggestedPrompts?.length ? <a href="/member" className="mx-4 mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48] underline-offset-4 hover:underline">Member card &amp; profile</a> : initialVoicePrompt ? <a href="/register" className="mx-4 mt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#005a48] underline-offset-4 hover:underline">New to NovaCorp? Create a healthcare ID</a> : null}
+
       {/* Input Area */}
       <form
         ref={inputAreaRef}

@@ -25,8 +25,32 @@ describe("AI-led member verification conversation", () => {
 
   it("does not mistake a phone-like value for a new member ID after a failed attempt", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "5550 104821", failedAttempts: 1 });
-    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
-    expect(result.reply).toMatch(/not a mobile number/i);
+    expect(result).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
+    expect(result.reply).toMatch(/member id/i);
+    expect(result.reply).not.toMatch(/not a mobile number/i);
+  });
+
+  it("counts unusable member-ID entries and escalates after the third failed access attempt", async () => {
+    const first = await continueMemberConversation({ stage: "awaiting_member_id", message: "6001" });
+    const second = await continueMemberConversation({ stage: "awaiting_member_id", message: "sí sí sí hermano", failedAttempts: first.failedAttempts });
+    const third = await continueMemberConversation({ stage: "awaiting_member_id", message: "sí 69", failedAttempts: second.failedAttempts });
+    expect(first).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 1 });
+    expect(first.reply).toMatch(/didn.t catch/i);
+    expect(second).toMatchObject({ stage: "awaiting_member_id", failedAttempts: 2 });
+    expect(third).toMatchObject({ stage: "escalated", failedAttempts: 3 });
+    expect(third.reply).toMatch(/live agent/i);
+  });
+
+  it("honors a direct live-agent request before credentials are collected", async () => {
+    const result = await continueMemberConversation({ stage: "awaiting_member_id", message: "Connect me to living" });
+    expect(result).toMatchObject({ stage: "escalated", failedAttempts: 0 });
+    expect(result.reply).toMatch(/live agent/i);
+  });
+
+  it.each(["Jesse de session", "enges session", "I don't"])("ends verification for fuzzy spoken closing %s", async message => {
+    const result = await continueMemberConversation({ stage: "awaiting_member_id", message });
+    expect(result).toMatchObject({ stage: "ended", failedAttempts: 0 });
+    expect(result.reply).toMatch(/verification session/i);
   });
 
   it("ends a pre-verification conversation courteously when the member says they do not want anything", async () => {
@@ -109,6 +133,14 @@ describe("care-message session boundary", () => {
   it("rejects a transcript-equivalent care request without a verified patient session", async () => {
     const caller = appRouter.createCaller({ req: { headers: { cookie: "" } } } as TrpcContext);
     await expect(caller.care.sendMessage({ message: "What is my specialist copay?" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects profile, card, and replacement actions without a verified patient session", async () => {
+    const caller = appRouter.createCaller({ req: { headers: { cookie: "" } } } as TrpcContext);
+    const profile = { name: "Taylor Morgan", dateOfBirth: "1990-10-21", phoneNumber: "555-016-7700", address: { line1: "125 River Road", city: "Portland", state: "OR", postalCode: "97201", country: "United States" } };
+    await expect(caller.care.updateMemberProfile(profile)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.care.createMemberCard()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.care.requestLostMemberCard()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 

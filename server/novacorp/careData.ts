@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { nanoid } from "nanoid";
+import { customAlphabet, nanoid } from "nanoid";
 import { ReturnDocument } from "mongodb";
 import { getMongoClient, getMongoDatabase } from "../mongo";
-import type { AppointmentSlot, BookingConfirmation, CareWorkspace, PolicyEvidence } from "@shared/novacorp";
+import type { AppointmentSlot, BookingConfirmation, CareWorkspace, LostMemberCardRequest, MemberCard, PolicyEvidence, PostalAddress } from "@shared/novacorp";
 
 type PatientDocument = {
   _id: string;
@@ -17,10 +17,20 @@ type PatientDocument = {
   deductibleRemaining: string;
   medications: Array<{ name: string; dosage: string }>;
   allergies: string[];
+  address?: PostalAddress;
+  memberCard?: MemberCard;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type AppointmentSlotDocument = { _id: string; clinician: string; specialty: string; dayLabel: string; timeLabel: string; location: string; status: "available" | "booked" };
 type AppointmentDocument = { _id: string; patientId: string; slotId: string; clinician: string; specialty: string; dateLabel: string; timeLabel: string; location: string; status: "scheduled" | "cancelled"; confirmationCode: string; createdAt: Date };
+type LostMemberCardRequestDocument = { _id: string; patientId: string; memberId: string; status: "submitted"; submittedAt: Date; createdAt: Date };
+export type MemberRegistrationInput = { name: string; dateOfBirth: string; phoneNumber: string; address: PostalAddress };
+export type MemberProfileUpdateInput = MemberRegistrationInput;
+
+const DEFAULT_ADDRESS: PostalAddress = { line1: "Not provided", city: "Not provided", state: "Not provided", postalCode: "Not provided", country: "United States" };
+const createMemberNumber = customAlphabet("0123456789", 8);
 
 export function normalizeMemberId(value: string) {
   const compact = value.trim().toUpperCase().replace(/[\s-]+/g, "");
@@ -49,7 +59,19 @@ function hashesMatch(left: string, right: string) {
 }
 
 function patientView(patient: PatientDocument) {
-  return { id: patient._id, name: patient.name, initials: patient.initials, dateOfBirth: patient.dateOfBirth, plan: patient.plan, memberId: patient.memberId, planStatus: patient.planStatus, specialistCopay: patient.specialistCopay, deductibleRemaining: patient.deductibleRemaining, medications: patient.medications, allergies: patient.allergies };
+  return { id: patient._id, name: patient.name, initials: patient.initials, dateOfBirth: patient.dateOfBirth, plan: patient.plan, memberId: patient.memberId, planStatus: patient.planStatus, specialistCopay: patient.specialistCopay, deductibleRemaining: patient.deductibleRemaining, medications: patient.medications, allergies: patient.allergies, address: patient.address ?? DEFAULT_ADDRESS, memberCard: patient.memberCard };
+}
+
+function initialsFor(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "NM";
+}
+
+function generateMemberId() {
+  return `NCM-${createMemberNumber()}`;
+}
+
+function toMemberCard(memberId: string, issuedAt: Date): MemberCard {
+  return { cardNumber: `NC-${memberId.replace(/[^A-Z0-9]/g, "")}`, issuedAt: issuedAt.toISOString(), status: "active" };
 }
 
 function slotView(slot: AppointmentSlotDocument): AppointmentSlot {
@@ -70,6 +92,77 @@ export async function verifyPatientCredentials(memberId: string, phoneNumber: st
   const patient = await db.collection<PatientDocument>("patients").findOne({ memberId: normalizedMemberId });
   if (!patient || !hashesMatch(patient.phoneHash, submittedHash)) throw new Error("We could not verify those member details.");
   return patientView(patient);
+}
+
+export async function registerMember(input: MemberRegistrationInput) {
+  const db = await getMongoDatabase();
+  const now = new Date();
+  const phoneHash = hashPhoneNumber(input.phoneNumber);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const memberId = generateMemberId();
+    const patient: PatientDocument = {
+      _id: `patient-${nanoid(14)}`,
+      memberId,
+      phoneHash,
+      name: input.name.trim(),
+      initials: initialsFor(input.name),
+      dateOfBirth: input.dateOfBirth,
+      address: input.address,
+      memberCard: toMemberCard(memberId, now),
+      plan: "NovaCorp Member Access",
+      planStatus: "Active",
+      specialistCopay: "Plan not assigned",
+      deductibleRemaining: "Plan not assigned",
+      medications: [],
+      allergies: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await db.collection<PatientDocument>("patients").insertOne(patient);
+      return patientView(patient);
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000 || attempt === 7) throw error;
+    }
+  }
+  throw new Error("A member ID could not be issued. Please try again.");
+}
+
+export async function updateMemberProfile(patientId: string, input: MemberProfileUpdateInput) {
+  const db = await getMongoDatabase();
+  const updated = await db.collection<PatientDocument>("patients").findOneAndUpdate(
+    { _id: patientId },
+    { $set: { name: input.name.trim(), initials: initialsFor(input.name), dateOfBirth: input.dateOfBirth, phoneHash: hashPhoneNumber(input.phoneNumber), address: input.address, updatedAt: new Date() } },
+    { returnDocument: ReturnDocument.AFTER },
+  );
+  if (!updated) throw new Error("The verified patient record was not found.");
+  return patientView(updated);
+}
+
+export async function getOrCreateMemberCard(patientId: string) {
+  const { db, patient } = await requirePatient(patientId);
+  if (patient.memberCard) return patient.memberCard;
+  const memberCard = toMemberCard(patient.memberId, new Date());
+  await db.collection<PatientDocument>("patients").updateOne({ _id: patientId }, { $set: { memberCard, updatedAt: new Date() } });
+  return memberCard;
+}
+
+export async function requestLostMemberCard(patientId: string): Promise<LostMemberCardRequest> {
+  const { db, patient } = await requirePatient(patientId);
+  const existing = await db.collection<LostMemberCardRequestDocument>("memberCardRequests").findOne({ patientId, status: "submitted" });
+  if (existing) return { reference: existing._id, status: existing.status, submittedAt: existing.submittedAt.toISOString() };
+  await getOrCreateMemberCard(patientId);
+  const submittedAt = new Date();
+  const request: LostMemberCardRequestDocument = { _id: `card-request-${nanoid(12)}`, patientId, memberId: patient.memberId, status: "submitted", submittedAt, createdAt: submittedAt };
+  try {
+    await db.collection<LostMemberCardRequestDocument>("memberCardRequests").insertOne(request);
+  } catch (error) {
+    if ((error as { code?: number }).code !== 11000) throw error;
+    const concurrent = await db.collection<LostMemberCardRequestDocument>("memberCardRequests").findOne({ patientId, status: "submitted" });
+    if (!concurrent) throw error;
+    return { reference: concurrent._id, status: concurrent.status, submittedAt: concurrent.submittedAt.toISOString() };
+  }
+  return { reference: request._id, status: request.status, submittedAt: request.submittedAt.toISOString() };
 }
 
 export async function getPatientWorkspace(patientId: string): Promise<CareWorkspace> {

@@ -69,11 +69,15 @@ export function MemberAccess({ onVerified, onVoiceSessionStart = () => undefined
       setFailedAttempts(result.failedAttempts);
       setToolCall(result.toolCall);
       if (result.stage === "escalated") {
+        (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = false;
+        window.dispatchEvent(new Event("novacorp:stop-voice-capture"));
         if (voiceSessionStarted) setEscalationReply(result.reply);
         else setStage("escalated");
         return;
       }
       if (result.stage === "ended") {
+        (window as typeof window & { __novaHandsFreeSession?: boolean }).__novaHandsFreeSession = false;
+        window.dispatchEvent(new Event("novacorp:stop-voice-capture"));
         if (voiceSessionStarted) setVerificationExitReply(result.reply);
         else setStage("ended");
         return;

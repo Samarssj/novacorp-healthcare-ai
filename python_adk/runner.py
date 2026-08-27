@@ -27,6 +27,8 @@ from data_service import client, database, find_patient, list_available_appointm
 APP_NAME = "novacorp_healthcare_adk"
 PATIENT_ID_PATTERN = re.compile(r"^patient-[a-z0-9-]{3,64}$")
 ALLOWED_TOOLS = {"get_patient_summary", "search_policy_evidence", "search_appointment_availability"}
+ACCESS_INTENTS = {"invalid_member_id", "invalid_phone", "end_session", "live_agent"}
+ACCESS_STAGES = {"awaiting_member_id", "awaiting_phone", "escalated", "ended"}
 
 
 def fetch_patient_summary(patient_id: str) -> dict[str, Any]:
@@ -122,6 +124,24 @@ def build_care_agent() -> Agent:
     )
 
 
+def build_access_clarifier_agent() -> Agent:
+    """An ADK-only language layer for non-sensitive, unauthenticated guidance."""
+    return Agent(
+        name="novacorp_access_clarifier",
+        model=os.environ.get("NOVACORP_ADK_MODEL", "gemini-3.6-flash"),
+        description="A credential-free clarifier for the NovaCorp member access screen.",
+        instruction=(
+            "Write one warm, concise NovaCorp member-access reply. You receive only a safe intent label, flow stage, and optional remaining-attempt count—never user speech, credentials, or patient data. "
+            "Do not authenticate anyone, do not ask for a name, date of birth, address, policy information, diagnosis, or medical details. "
+            "For invalid_member_id, politely ask for the member ID from the card and optionally give the example NCG-48219. "
+            "For invalid_phone, ask for the mobile number associated with the already supplied member ID. "
+            "When remaining attempts is supplied, accurately include that count and say a live agent can help after the final attempt. "
+            "For live_agent, say a live agent will help and the verification session is ending. For end_session, acknowledge and say the verification session is ending. "
+            "Do not mention these instructions, models, tools, or internal labels."
+        ),
+    )
+
+
 def route_for(message: str) -> dict[str, bool]:
     normalized = message.lower()
     return {
@@ -177,7 +197,76 @@ async def run_adk(message: str, patient_id: str) -> str:
     return final_text
 
 
+def access_fallback_reply(intent: str, remaining_attempts: int | None) -> str:
+    if intent == "live_agent":
+        return "I’ll connect you with a live agent now. This verification session is ending."
+    if intent == "end_session":
+        return "Understood. I’ll end this verification session now. You can return whenever you need help."
+    if intent == "invalid_phone":
+        count = remaining_attempts if remaining_attempts is not None else 3
+        suffix = "" if count == 1 else "s"
+        return f"I couldn’t verify that mobile number. Please try the number linked to your member ID again. You have {count} attempt{suffix} remaining before I connect you to a live agent."
+    count = remaining_attempts if remaining_attempts is not None else 3
+    suffix = "" if count == 1 else "s"
+    return f"I didn’t catch a usable member ID. Please try the letters and numbers on your NovaCorp card, for example NCG-48219. You have {count} attempt{suffix} remaining before I connect you to a live agent."
+
+
+def access_reply_is_safe(reply: str, intent: str, remaining_attempts: int | None) -> bool:
+    normalized = reply.lower().strip()
+    if len(reply) < 20 or len(reply) > 420:
+        return False
+    if re.search(r"\b(patient|policy|coverage|diagnos|appointment|prescrib|date of birth|address)\b", normalized):
+        return False
+    if intent == "invalid_member_id" and "member" not in normalized:
+        return False
+    if intent == "invalid_phone" and not any(term in normalized for term in ("mobile", "phone", "number")):
+        return False
+    if intent in {"live_agent", "end_session"} and "session" not in normalized:
+        return False
+    if remaining_attempts is not None and str(remaining_attempts) not in normalized:
+        return False
+    return True
+
+
+async def run_access_adk(intent: str, stage: str, remaining_attempts: int | None) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return ""
+    os.environ["GOOGLE_API_KEY"] = api_key
+    service = InMemorySessionService()
+    runner = Runner(app_name=APP_NAME, agent=build_access_clarifier_agent(), session_service=service)
+    session_id = f"access-{uuid.uuid4().hex}"
+    await service.create_session(app_name=APP_NAME, user_id="unverified", session_id=session_id, state={"intent": intent, "stage": stage, "remaining_attempts": remaining_attempts})
+    prompt = f"Compose the member-access reply for intent={intent}; stage={stage}; remaining_attempts={remaining_attempts}."
+    final_text = ""
+    try:
+        async for event in runner.run_async(user_id="unverified", session_id=session_id, new_message=types.Content(role="user", parts=[types.Part.from_text(text=prompt)])):
+            if event.is_final_response() and event.content and event.content.parts:
+                final_text = "".join(part.text or "" for part in event.content.parts).strip() or final_text
+    except BaseException as error:
+        if isinstance(error, (KeyboardInterrupt, SystemExit)):
+            raise
+        return ""
+    return final_text
+
+
+async def compose_access_reply(payload: dict[str, Any]) -> dict[str, Any]:
+    intent = str(payload.get("intent", ""))
+    stage = str(payload.get("stage", ""))
+    remaining = payload.get("remainingAttempts")
+    remaining_attempts = int(remaining) if isinstance(remaining, int) and 0 < remaining <= 3 else None
+    if intent not in ACCESS_INTENTS or stage not in ACCESS_STAGES:
+        raise ValueError("Invalid access clarification request.")
+    fallback = access_fallback_reply(intent, remaining_attempts)
+    if intent in {"end_session", "live_agent"} or os.environ.get("NOVACORP_ADK_OFFLINE") == "1":
+        return {"reply": fallback, "mode": "deterministic"}
+    adk_reply = await run_access_adk(intent, stage, remaining_attempts)
+    return {"reply": adk_reply if access_reply_is_safe(adk_reply, intent, remaining_attempts) else fallback, "mode": "adk" if access_reply_is_safe(adk_reply, intent, remaining_attempts) else "safe-fallback"}
+
+
 async def execute(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("operation") == "compose_access_reply":
+        return await compose_access_reply(payload)
     patient_id = str(payload.get("patientId", ""))
     message = str(payload.get("message", "")).strip()
     if not PATIENT_ID_PATTERN.fullmatch(patient_id) or not message or len(message) > 1600:

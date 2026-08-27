@@ -132,3 +132,12 @@
 - [x] Replace Nova’s sparkle/Gemini-style assistant icons with healthcare-oriented symbols and validate the refreshed member interface.
 - [x] Stop all microphone tracks, fallback recording, and native speech recognition when a member ends the care session.
 - [x] Document the healthcare iconography refresh and automatic voice-capture shutdown on care-session ending, then synchronize the README to GitHub.
+- [x] Extend MongoDB patient records and indexes with date of birth, postal address, permanent member ID allocation, and lost-card request history.
+- [x] Add public member registration that collects name, date of birth, mobile number, and address, then issues a unique member ID without exposing existing records.
+- [x] Add verified-member profile updates for name, mobile number, date of birth, and address, including safe phone-hash and signed-session handling.
+- [x] Ensure newly registered and existing verified members use the same permanent profile-update experience after registration or sign-in.
+- [x] Add verified-member digital ID-card retrieval and a persistent lost-card replacement request flow.
+- [x] Build responsive registration and member self-service experiences, then add secure lifecycle regression tests and documentation.
+- [x] Recognize explicit live-agent requests and end-session phrases, including common speech-transcription variations, before member verification completes.
+- [x] Count repeated invalid member-ID entries toward a bounded pre-verification escalation path, then stop voice capture and direct the member to a live agent after three failures.
+- [x] Use the Python ADK response boundary for non-sensitive pre-verification clarification wording, while keeping credential collection, session creation, exits, and escalation deterministic.
