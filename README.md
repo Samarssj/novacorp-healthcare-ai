@@ -24,6 +24,8 @@ NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-l
 | **Grounded coverage support** | Policy answers use retrieved evidence with document, section, page, and relevance details. |
 | **Action safeguards** | Booking and cancellation need a separate, explicit confirmation before server execution. |
 | **Stateless deployment** | Persistent data lives in MongoDB; request-scoped Python ADK sessions never become an authorization store. |
+| **Voice session control** | Members can speak naturally, see Nova’s spoken messages in the transcript, and end a voice session without leaving microphone capture active. |
+| **Healthcare-first interface** | Nova’s assistant surfaces use heart-pulse iconography rather than generic AI sparkle marks. |
 
 ---
 
@@ -185,6 +187,14 @@ Each member has an active plan, patient-scoped profile data, and the same dual-v
 | **Jordan Brooks** (`NCS-76064`) | **NovaCorp Silver Select**; $70 specialist copay; $910 deductible remaining; Albuterol as needed; sulfonamide allergy; no seeded future appointment. | Ask **“Show my profile,”** **“What is my specialist copay?”**, or **“Find dermatology availability.”** Then ask **“Does my plan cover an orthopedic consultation?”** to test the no-evidence guardrail: Nova must state that it cannot make a coverage claim without retrieved Silver Select policy evidence. |
 
 Use these requests to verify the core safety path: **profile and appointment data remain scoped to the verified member; coverage responses include evidence citations when available; no diagnosis is provided; and booking or cancellation occurs only after an explicit confirmation in the typed server workflow.** You can end any test conversation with a natural closing phrase, such as “I do not need anything else” or “Have a good day,” to test the courteous signed-session closure.
+
+## Voice experience and session ending
+
+Nova’s visual identity uses **heart-pulse healthcare marks** in the assistant card, conversation timeline, empty states, and care-workspace runtime label. The symbols identify a health service without implying that the model is a clinical authority; the existing evidence, verification, and no-diagnosis safeguards remain the governing behavior.
+
+When a member starts a voice conversation, Nova uses browser-native speech recognition where available, submits a completed utterance after a natural pause, and writes Nova’s spoken prompts and responses into the visible chat transcript. The interface shows browser support, selected fallback-transcription language, a recording countdown when the fallback path is used, and an accessible microphone-level meter while listening.
+
+> **Session-ending guarantee:** On a confirmed spoken or typed care-session ending, the client immediately cancels native speech recognition, stops fallback recording and all microphone tracks, closes audio/meter resources, clears inactivity and resume timers, and prevents any deferred listening restart. The signed patient session is then closed by the server. No raw audio is retained by this application.
 
 ## Environment configuration
 

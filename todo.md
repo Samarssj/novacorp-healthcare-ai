@@ -131,3 +131,4 @@
 - [x] Document seeded test-member credentials and representative verified-care requests in the README, then synchronize the guide to GitHub.
 - [x] Replace Nova’s sparkle/Gemini-style assistant icons with healthcare-oriented symbols and validate the refreshed member interface.
 - [x] Stop all microphone tracks, fallback recording, and native speech recognition when a member ends the care session.
+- [x] Document the healthcare iconography refresh and automatic voice-capture shutdown on care-session ending, then synchronize the README to GitHub.
