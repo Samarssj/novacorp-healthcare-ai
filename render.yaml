@@ -1,9 +1,8 @@
 services:
   - type: web
     name: novacorp-healthcare-ai
-    runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm render-build
-    startCommand: pnpm start
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -17,5 +16,5 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-      - key: GEMINI_MODEL
+      - key: NOVACORP_ADK_MODEL
         value: gemini-3.6-flash

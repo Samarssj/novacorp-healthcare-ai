@@ -119,3 +119,6 @@
 - [x] Add regression coverage for verification-stage exits and continuous native listening through repeated invalid retry prompts.
 - [x] Preserve the spoken courteous verification-exit farewell until completion, then clear the persisted hands-free session state.
 - [x] Add a browser-runtime regression proving a voice-triggered verification exit completes its farewell and terminates hands-free state cleanly.
+- [x] Replace the custom Gemini orchestration layer with the official Google ADK runtime and document the ADK agent composition.
+- [x] Expose only patient-scoped, server-approved data retrieval to ADK agents while retaining deterministic authentication and explicit booking/cancellation submission safeguards.
+- [x] Add ADK integration and regression coverage for routing, grounded responses, safe fallback behavior, and protected appointment actions.

@@ -66,5 +66,5 @@ export type CoordinatorResult = {
   slots: AppointmentSlot[];
   needsConfirmation: boolean;
   bookingDraft?: AppointmentSlot;
-  coordinatorMode: "gemini" | "safe-fallback";
+  coordinatorMode: "adk" | "safe-fallback";
 };

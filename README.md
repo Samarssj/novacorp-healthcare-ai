@@ -4,15 +4,15 @@
 
 ### Technology constellation
 
-[![Core stack](https://skillicons.dev/icons?i=react,ts,tailwind,nodejs,express,mysql,git,github&theme=dark&perline=8)](https://skillicons.dev)
+[![Core stack](https://skillicons.dev/icons?i=react,ts,tailwind,nodejs,express,python,mysql,git,github&theme=dark&perline=9)](https://skillicons.dev)
 
 [![tRPC](https://img.shields.io/badge/tRPC-Typed%20APIs-398CCB?style=for-the-badge&logo=trpc&logoColor=white)](https://trpc.io/)
 [![Drizzle](https://img.shields.io/badge/Drizzle-ORM-C5F74F?style=for-the-badge&logo=drizzle&logoColor=171717)](https://orm.drizzle.team/)
-[![Gemini](https://img.shields.io/badge/Gemini-3.6%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Google ADK](https://img.shields.io/badge/Google%20ADK-Python%20callbacks-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://adk.dev/)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?style=for-the-badge&logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
 [![Render](https://img.shields.io/badge/Render-Deploy%20ready-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/)
 
-NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-led access conversation** with a persistent multi-patient data model, policy-evidence retrieval, confirmation-gated appointments, and guarded Gemini reasoning. The product is designed so that the server—not the model or browser—owns verification, patient identity, data access, and consequential actions.
+NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-led access conversation** with a persistent multi-patient data model, policy-evidence retrieval, confirmation-gated appointments, and a guarded **Python Google ADK** runtime. The product is designed so that the server—not the model or browser—owns verification, patient identity, data access, and consequential actions.
 
 ## Product at a glance
 
@@ -20,10 +20,10 @@ NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-l
 |---|---|
 | **Conversation-first access** | Nova greets the member, requests a member ID, then asks for the associated mobile number. |
 | **Patient-scoped session** | A signed, HTTP-only session is issued only after the backend verifies both credentials. |
-| **Specialist routing** | Gemini classifies care requests for Patient, Insurance, Appointment, and Summary specialists. |
+| **ADK care coordination** | Python Google ADK invokes patient, evidence, availability, and summary callbacks for verified requests. |
 | **Grounded coverage support** | Policy answers use retrieved evidence with document, section, page, and relevance details. |
 | **Action safeguards** | Booking and cancellation need a separate, explicit confirmation before server execution. |
-| **Stateless deployment** | Persistent data lives in MySQL-compatible storage; the Node service is ready for Render. |
+| **Stateless deployment** | Persistent data lives in MySQL-compatible storage; request-scoped Python ADK sessions never become an authorization store. |
 
 ---
 
@@ -66,12 +66,13 @@ flowchart LR
     sse[SSE care stream\nLive agent activity]
     access[Conversation controller\nCredential collection]
     session[Signed patient session\nHTTP-only cookie]
-    router[Care coordinator\nIntent + specialist routing]
+    bridge[TypeScript transport bridge\nVerified request only]
+    router[Python Google ADK\nCoordinator + callbacks]
     tools[Approved OpenAPI tools\nZod argument validation]
     patient[Patient specialist]
     insurance[Insurance RAG specialist]
     appointment[Appointment specialist]
-    gemini[Gemini 3.6 Flash\nStructured reasoning]
+    gemini[Gemini 3.6 Flash\nADK model provider]
     db[(MySQL-compatible database\nPatients · plans · slots)]
     evidence[(Policy evidence index)]
 
@@ -82,8 +83,9 @@ flowchart LR
     access --> tools
     tools --> db
     access --> session
-    session --> router
-    sse --> router
+    session --> bridge
+    sse --> bridge
+    bridge --> router
     router --> patient
     router --> insurance
     router --> appointment
@@ -102,7 +104,8 @@ flowchart LR
 | **Tool use** | Operations are allowlisted, described by OpenAPI 3.1, and validated with Zod before execution. |
 | **Evidence** | A response selecting policy evidence must include matching citations; no-evidence requests produce no policy conclusion. |
 | **Appointments** | A displayed slot does not create an appointment. The member must explicitly confirm before the server calls the booking operation. |
-| **LLM output** | Gemini receives approved, patient-scoped outputs only. Structured results are checked before the member sees them. |
+| **ADK callbacks** | Python `before_model` and `before_tool` callbacks require trusted patient state and reject non-allowlisted operations. |
+| **Model output** | ADK responses are checked for citations, unsupported coverage language, diagnosis, and autonomous appointment claims before the member sees them. |
 
 ---
 
@@ -111,11 +114,11 @@ flowchart LR
 | Layer | Technologies | Responsibility |
 |---|---|---|
 | **Experience** | React 19, TypeScript, Tailwind CSS, shadcn/ui | Responsive member conversation and care workspace. |
-| **Application server** | Node.js, Express 4, tRPC 11 | Typed APIs, server-sent activity events, session-bound orchestration. |
+| **Application boundary** | Node.js, Express 4, tRPC 11 | Typed APIs, SSE activity events, signed-session validation, and a thin bridge to Python. |
 | **Data** | MySQL-compatible database, Drizzle ORM | Multi-patient records, medications, allergies, availability, and appointments. |
-| **AI** | Google Gemini 3.6 Flash, JSON schemas | Specialist intent classification and constrained response composition. |
+| **AI runtime** | Python 3, Google ADK, Gemini 3.6 Flash | ADK agent orchestration, typed Python function callbacks, and guarded response composition. |
 | **Contracts** | OpenAPI 3.1, Zod | Documented operations and runtime validation. |
-| **Deployment** | Render Blueprint, health endpoint, environment configuration | One stateless Node service with persistent database backing. |
+| **Deployment** | Docker, Render Blueprint, health endpoint, environment configuration | One stateless Node + Python service with persistent database backing. |
 
 ---
 
@@ -176,16 +179,16 @@ pnpm build
 |---|---|
 | `DATABASE_URL` | MySQL-compatible patient-care database connection. |
 | `JWT_SECRET` | Signing short-lived, verified patient sessions. |
-| `GEMINI_API_KEY` | Server-only Gemini API access for external hosting. |
-| `GEMINI_MODEL` | Optional Gemini model override; defaults to `gemini-3.6-flash`. |
+| `GEMINI_API_KEY` | Server-only Gemini API access used by the Python ADK runtime. |
+| `NOVACORP_ADK_MODEL` | Optional Python ADK Gemini model override; defaults to `gemini-3.6-flash`. |
 
 Never commit environment values or expose them through client-side code.
 
 ## Deploy to Render
 
-The included [`render.yaml`](render.yaml) configures a stateless Node web service using `pnpm render-build`, `pnpm start`, and the `/health` check. Attach a persistent MySQL-compatible database, configure the server-only values above, apply the migration, then run `pnpm seed:demo` for the showcase data.
+The included [`render.yaml`](render.yaml) configures a Docker-based, stateless Node + Python web service with the `/health` check. The root [`Dockerfile`](Dockerfile) installs the pinned Python ADK runtime, builds the React application, and starts the Node delivery process. Attach a persistent MySQL-compatible database, configure the server-only values above, apply the migration, then run `pnpm seed:demo` for the showcase data.
 
-The project uses the Gemini `generateContent` API for its external server-side adapter and follows the application-managed function-calling pattern documented by Google. [1] [2]
+The project uses the official Python Google ADK agent runtime with function callbacks and lifecycle callbacks. [1] [2] [3]
 
 ## Project map
 
@@ -193,15 +196,18 @@ The project uses the Gemini `generateContent` API for its external server-side a
 |---|---|
 | `client/src/pages/Home.tsx` | Conversation-led member verification and patient workspace experience. |
 | `server/novacorp/memberVerification.ts` | Verification conversation state machine and typed `verify_member` operation. |
-| `server/novacorp/coordinator.ts` | Gemini intent routing, specialist orchestration, response validation, and fallback behavior. |
+| `server/novacorp/coordinator.ts` | Thin TypeScript transport bridge from the authenticated SSE route to Python. |
+| `server/novacorp/adkRunner.ts` | Request-scoped Node-to-Python execution adapter and response-contract validation. |
+| `python_adk/runner.py` | Official Python Google ADK agent, callback tools, grounded-output validation, and safe fallback. |
 | `server/novacorp/tools.ts` | Patient-scoped approved operation dispatcher. |
 | `server/novacorp/openapi.ts` | OpenAPI 3.1 contract and compatible model-tool definitions. |
-| `server/novacorp/gemini.ts` | Direct external Gemini adapter with structured-response handling. |
 | `drizzle/schema.ts` | Persistent multi-patient schema. |
 | `docs/deployment.md` | External hosting, database, and Gemini deployment guide. |
 
 ## References
 
-[1] [Google Gemini API — generateContent](https://ai.google.dev/api/generate-content)
+[1] [Google ADK — Python quickstart](https://adk.dev/get-started/python/)
 
-[2] [Google Gemini API — function calling](https://ai.google.dev/gemini-api/docs/function-calling)
+[2] [Google ADK — function tools](https://adk.dev/tools-custom/function-tools/)
+
+[3] [Google ADK — callbacks](https://adk.dev/callbacks/types-of-callbacks/)
