@@ -1,22 +1,20 @@
-# NovaCorp Health Member-Care Workflow
-
 ## Verified patient access
 
-NovaCorp Health opens with a greeting from Nova rather than a preselected patient profile or standalone credential form. Nova asks for the member ID first, then asks for the associated mobile number. The backend conversational controller invokes the typed `verify_member` operation against the persisted patient record and creates a short-lived signed session cookie only after that tool returns a verified patient. Every care operation resolves its patient identity from this session; no patient identifier is trusted from the browser or model.
+NovaCorp starts with Nova requesting a member ID and then the associated mobile number. The deterministic server controller normalizes both values, compares the mobile hash against the MongoDB patient document, and creates a short-lived signed session only after success. Every care operation resolves its patient identity from that session; neither the browser nor the ADK model supplies it.
 
-> Gemini is a reasoning and response-composition component. Authentication, authorization, patient selection, database access, and appointment execution are server-owned responsibilities.
+> Google ADK coordinates approved, read-only care callbacks. Authentication, authorization, patient selection, and appointment submission remain server-owned responsibilities.
 
 ## Request orchestration
 
 | Stage | Workflow | Guardrail |
 |---|---|---|
-| 1 | A verified member opens their profile workspace. | All database reads include the session-derived patient ID. |
-| 2 | The member asks a care question. | The chat stream requires a valid session cookie. |
-| 3 | Gemini classifies the request for Patient, Insurance, and/or Appointment specialists. | The server validates classification JSON and falls back to deterministic routing. |
-| 4 | The coordinator calls typed approved operations for the verified member. | Every input uses Zod validation and no operation accepts model-provided patient identity. |
-| 5 | Gemini composes a structured response from the approved outputs. | The server rejects unknown citations, unsupported coverage language, unconfirmed booking claims, and missing confirmation messages. |
-| 6 | The interface offers an action only when a valid slot or appointment exists. | Booking and cancellation each require a separate explicit confirmation plus typed server validation. |
+| 1 | A verified member opens their MongoDB-backed workspace. | Workspace reads use only the session-derived patient ID. |
+| 2 | The member asks a care question. | The stream requires a valid signed patient session. |
+| 3 | Node passes the trusted patient ID and question to Python Google ADK. | ADK sessions are request-scoped and do not authorize access. |
+| 4 | Python ADK invokes profile, evidence, and availability callbacks. | Callback hooks allow only approved, read-only MongoDB operations. |
+| 5 | The response is grounded or falls back to deterministic MongoDB callback output. | Missing evidence produces no coverage conclusion; ungrounded output is rejected. |
+| 6 | The interface offers appointment review where availability exists. | Booking and cancellation require a separate, explicit confirmed request and a MongoDB transaction. |
 
 ## Persistence model
 
-The database stores three member profiles with per-patient plan records, medications, allergies, scheduled appointments, and available slots. The data-access layer returns only the verified subject’s workspace. The external host remains stateless because session identity is carried in a signed cookie and persistent records live in the configured database.
+MongoDB embeds medications and allergies in each patient document and keeps appointment slots, appointments, and policy evidence in dedicated collections. Unique member-ID, slot, and scoped appointment indexes protect data integrity. The host remains stateless because signed cookies carry temporary verified-session identity while durable records reside in MongoDB.

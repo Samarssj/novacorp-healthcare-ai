@@ -4,10 +4,10 @@
 
 ### Technology constellation
 
-[![Core stack](https://skillicons.dev/icons?i=react,ts,tailwind,nodejs,express,python,mysql,git,github&theme=dark&perline=9)](https://skillicons.dev)
+[![Core stack](https://skillicons.dev/icons?i=react,ts,tailwind,nodejs,express,python,mongodb,git,github&theme=dark&perline=9)](https://skillicons.dev)
 
 [![tRPC](https://img.shields.io/badge/tRPC-Typed%20APIs-398CCB?style=for-the-badge&logo=trpc&logoColor=white)](https://trpc.io/)
-[![Drizzle](https://img.shields.io/badge/Drizzle-ORM-C5F74F?style=for-the-badge&logo=drizzle&logoColor=171717)](https://orm.drizzle.team/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Data%20layer-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Google ADK](https://img.shields.io/badge/Google%20ADK-Python%20callbacks-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://adk.dev/)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?style=for-the-badge&logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
 [![Render](https://img.shields.io/badge/Render-Deploy%20ready-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/)
@@ -23,7 +23,7 @@ NovaCorp Health is an enterprise-ready member-care workspace. It pairs an **AI-l
 | **ADK care coordination** | Python Google ADK invokes patient, evidence, availability, and summary callbacks for verified requests. |
 | **Grounded coverage support** | Policy answers use retrieved evidence with document, section, page, and relevance details. |
 | **Action safeguards** | Booking and cancellation need a separate, explicit confirmation before server execution. |
-| **Stateless deployment** | Persistent data lives in MySQL-compatible storage; request-scoped Python ADK sessions never become an authorization store. |
+| **Stateless deployment** | Persistent data lives in MongoDB; request-scoped Python ADK sessions never become an authorization store. |
 
 ---
 
@@ -73,7 +73,7 @@ flowchart LR
     insurance[Insurance RAG specialist]
     appointment[Appointment specialist]
     gemini[Gemini 3.6 Flash\nADK model provider]
-    db[(MySQL-compatible database\nPatients · plans · slots)]
+    db[(MongoDB\nPatients · plans · slots)]
     evidence[(Policy evidence index)]
 
     member --> web
@@ -115,7 +115,7 @@ flowchart LR
 |---|---|---|
 | **Experience** | React 19, TypeScript, Tailwind CSS, shadcn/ui | Responsive member conversation and care workspace. |
 | **Application boundary** | Node.js, Express 4, tRPC 11 | Typed APIs, SSE activity events, signed-session validation, and a thin bridge to Python. |
-| **Data** | MySQL-compatible database, Drizzle ORM | Multi-patient records, medications, allergies, availability, and appointments. |
+| **Data** | MongoDB, MongoDB Node.js driver, PyMongo | Multi-patient records, medications, allergies, cited evidence, availability, and appointments. |
 | **AI runtime** | Python 3, Google ADK, Gemini 3.6 Flash | ADK agent orchestration, typed Python function callbacks, and guarded response composition. |
 | **Contracts** | OpenAPI 3.1, Zod | Documented operations and runtime validation. |
 | **Deployment** | Docker, Render Blueprint, health endpoint, environment configuration | One stateless Node + Python service with persistent database backing. |
@@ -149,11 +149,10 @@ pnpm install
 pnpm dev
 ```
 
-### 2. Migrate and seed
+### 2. Configure MongoDB and seed
 
 ```bash
-pnpm drizzle-kit generate
-# Apply the generated migration through the configured database migration flow.
+# Configure MONGODB_URI in the server environment, then initialize indexes and showcase records.
 pnpm seed:demo
 ```
 
@@ -177,7 +176,8 @@ pnpm build
 
 | Variable | Used for |
 |---|---|
-| `DATABASE_URL` | MySQL-compatible patient-care database connection. |
+| `MONGODB_URI` | Server-only MongoDB or MongoDB Atlas connection URI. |
+| `MONGODB_DATABASE` | Optional database name; defaults to `novacorp_healthcare`. |
 | `JWT_SECRET` | Signing short-lived, verified patient sessions. |
 | `GEMINI_API_KEY` | Server-only Gemini API access used by the Python ADK runtime. |
 | `NOVACORP_ADK_MODEL` | Optional Python ADK Gemini model override; defaults to `gemini-3.6-flash`. |
@@ -186,7 +186,7 @@ Never commit environment values or expose them through client-side code.
 
 ## Deploy to Render
 
-The included [`render.yaml`](render.yaml) configures a Docker-based, stateless Node + Python web service with the `/health` check. The root [`Dockerfile`](Dockerfile) installs the pinned Python ADK runtime, builds the React application, and starts the Node delivery process. Attach a persistent MySQL-compatible database, configure the server-only values above, apply the migration, then run `pnpm seed:demo` for the showcase data.
+The included [`render.yaml`](render.yaml) configures a Docker-based, stateless Node + Python web service with the `/health` check. The root [`Dockerfile`](Dockerfile) installs the pinned Python ADK runtime, builds the React application, and starts the Node delivery process. Create a MongoDB Atlas deployment, configure the server-only values above, then run `pnpm seed:demo` once to create MongoDB indexes and the showcase records.
 
 The project uses the official Python Google ADK agent runtime with function callbacks and lifecycle callbacks. [1] [2] [3]
 
@@ -199,9 +199,10 @@ The project uses the official Python Google ADK agent runtime with function call
 | `server/novacorp/coordinator.ts` | Thin TypeScript transport bridge from the authenticated SSE route to Python. |
 | `server/novacorp/adkRunner.ts` | Request-scoped Node-to-Python execution adapter and response-contract validation. |
 | `python_adk/runner.py` | Official Python Google ADK agent, callback tools, grounded-output validation, and safe fallback. |
+| `python_adk/data_service.py` | MongoDB-backed Python ADK callback data operations and index definitions. |
+| `server/mongo.ts` | Server-only pooled MongoDB connection for deterministic verification and appointment confirmation. |
 | `server/novacorp/tools.ts` | Patient-scoped approved operation dispatcher. |
 | `server/novacorp/openapi.ts` | OpenAPI 3.1 contract and compatible model-tool definitions. |
-| `drizzle/schema.ts` | Persistent multi-patient schema. |
 | `docs/deployment.md` | External hosting, database, and Gemini deployment guide. |
 
 ## References

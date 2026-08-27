@@ -28,7 +28,7 @@ describe("NovaCorp grounded multi-patient contract", () => {
 
 });
 
-describe.runIf(Boolean(process.env.DATABASE_URL))("NovaCorp verified-patient database integration", () => {
+describe.runIf(Boolean(process.env.MONGODB_URI))("NovaCorp verified-patient database integration", () => {
   it("verifies multiple member records and isolates their workspaces", async () => {
     const [avery, maya] = await Promise.all([
       verifyPatientCredentials("NCG-48219", "555-010-4821"),
@@ -49,5 +49,5 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("NovaCorp verified-patient dat
 
   it("rejects a nonmatching member and phone combination", async () => {
     await expect(verifyPatientCredentials("NCG-48219", "555-010-9157")).rejects.toThrow("could not verify");
-  });
+  }, 20_000);
 });

@@ -1,2 +1,2 @@
 google-adk==2.8.0
-PyMySQL==1.2.0
+pymongo[srv]==4.16.0

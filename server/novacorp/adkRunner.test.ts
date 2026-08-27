@@ -8,7 +8,7 @@ afterEach(() => {
   else process.env.NOVACORP_ADK_OFFLINE = originalOfflineMode;
 });
 
-describe.runIf(Boolean(process.env.DATABASE_URL))("Python Google ADK coordinator bridge", () => {
+describe.runIf(Boolean(process.env.MONGODB_URI))("Python Google ADK coordinator bridge", () => {
   it("executes the request-scoped Python ADK callback workflow without allowing autonomous booking", async () => {
     process.env.NOVACORP_ADK_OFFLINE = "1";
     const result = await runPythonAdkCoordinator({ patientId: "patient-avery", message: "Does my plan cover an orthopedic consultation and what is the earliest appointment?" });

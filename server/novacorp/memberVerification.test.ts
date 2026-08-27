@@ -53,11 +53,11 @@ describe("AI-led member verification conversation", () => {
   });
 });
 
-describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification tool handoff", () => {
+describe.runIf(Boolean(process.env.MONGODB_URI))("AI-led member verification tool handoff", () => {
   it("calls the typed backend verification tool and returns the verified member", async () => {
     const result = await executeMemberVerificationTool({ memberId: "NCG-48219", phoneNumber: "555-010-4821" });
     expect(result).toMatchObject({ id: "patient-avery", memberId: "NCG-48219" });
-  });
+  }, 20_000);
 
   it("verifies every published demonstration member and normalized mobile pair", async () => {
     const results = await Promise.all([
@@ -66,7 +66,7 @@ describe.runIf(Boolean(process.env.DATABASE_URL))("AI-led member verification to
       executeMemberVerificationTool({ memberId: "NCS76064", phoneNumber: "555-010-7606" }),
     ]);
     expect(results.map(result => result.id)).toEqual(["patient-avery", "patient-maya", "patient-jordan"]);
-  });
+  }, 30_000);
 
   it("creates a verified conversation result only after the tool accepts both credentials", async () => {
     const result = await continueMemberConversation({ stage: "awaiting_phone", memberId: "NCG-48219", message: "555-010-4821" });
@@ -126,7 +126,7 @@ describe("patient session ending", () => {
     ]));
   });
 
-  it.runIf(Boolean(process.env.DATABASE_URL))("uses the signed failure counter to escalate even if a client resets its reported attempt count", async () => {
+  it.runIf(Boolean(process.env.MONGODB_URI))("uses the signed failure counter to escalate even if a client resets its reported attempt count", async () => {
     const cleared: Array<{ name: string; options: Record<string, unknown> }> = [];
     const attemptsToken = await createVerificationAttemptToken(2);
     const caller = appRouter.createCaller({

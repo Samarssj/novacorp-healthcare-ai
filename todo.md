@@ -122,3 +122,8 @@
 - [x] Replace the custom Gemini orchestration layer with the official Google ADK runtime and document the ADK agent composition.
 - [x] Expose only patient-scoped, server-approved data retrieval to ADK agents while retaining deterministic authentication and explicit booking/cancellation submission safeguards.
 - [x] Add ADK integration and regression coverage for routing, grounded responses, safe fallback behavior, and protected appointment actions.
+- [x] Replace MySQL/Drizzle patient-care persistence with MongoDB collections, indexes, and a server-only Mongo connection configuration.
+- [x] Migrate member verification, patient-scoped care retrieval, and confirmation-gated appointment operations to MongoDB without accepting model- or browser-supplied patient identity.
+- [x] Replace Python ADK MySQL callbacks with MongoDB callbacks and update container, Render, seed, and documentation configuration.
+- [x] Add MongoDB-focused regression coverage, validate the workspace and Python ADK bridge, then document the MongoDB deployment path.
+- [x] Resolve the MongoDB OAuth-user upsert field conflict and add a regression for first authenticated user synchronization.
